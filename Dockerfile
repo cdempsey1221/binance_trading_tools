@@ -21,13 +21,13 @@ WORKDIR /app
 RUN wget -qO- https://repo.nordvpn.com/gpg/nordvpn_public.asc | gpg --dearmor | sudo tee /usr/share/keyrings/nordvpn-archive-keyring.gpg > /dev/null && \
     echo "deb [signed-by=/usr/share/keyrings/nordvpn-archive-keyring.gpg] https://repo.nordvpn.com/deb/nordvpn/debian stable main" | sudo tee /etc/apt/sources.list.d/nordvpn.list
 
-# Update the package list and install the NordVPN package with the -y flag
+# Update the package list and install the NordVPN package
 RUN apt-get update && \
     apt-get install -y --no-install-recommends nordvpn && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file and install Python dependencies in a virtual environment
+# install Python dependencies in a virtual environment
 COPY requirements.txt .
 RUN python3 -m venv venv && \
     ./venv/bin/pip install --no-cache-dir -r requirements.txt

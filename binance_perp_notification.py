@@ -5,7 +5,7 @@ import asyncio
 import time
 import logging
 
-# Configure logging to write to stdout, which Docker collects
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
