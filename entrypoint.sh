@@ -25,6 +25,6 @@ fi
 
 echo "Successfully connected to NordVPN."
 
-# Run the Binance perp notification script using the virtual environment
-echo "Starting Python script..."
-exec ./venv/bin/python3 binance_perp_notification.py
+# Run the momentum scanner script using the virtual environment
+echo "Starting momentum_scanner.py script..."
+exec ./venv/bin/python3 momentum_scanner.py

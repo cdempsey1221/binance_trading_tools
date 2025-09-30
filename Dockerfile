@@ -27,12 +27,13 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# install Python dependencies in a virtual environment
+# Install Python dependencies in a virtual environment
 COPY requirements.txt .
 RUN python3 -m venv venv && \
     ./venv/bin/pip install --no-cache-dir -r requirements.txt
 
-COPY binance_perp_notification.py .
+# Copy application files
+COPY momentum_scanner.py .
 COPY entrypoint.sh .
 
 RUN chmod +x entrypoint.sh
