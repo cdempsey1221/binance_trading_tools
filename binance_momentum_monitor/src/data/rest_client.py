@@ -9,6 +9,7 @@ import requests
 from threading import Lock
 
 from ..monitoring.logger import get_logger
+from ..monitoring.instrumentation import api_call
 
 
 logger = get_logger('rest_client')
@@ -50,6 +51,7 @@ class BinanceRestClient:
             
             self.request_times.append(time.time())
     
+    @api_call(endpoint="24hr_tickers")
     def get_24hr_tickers(self) -> List[Dict]:
         """
         Fetch 24hr ticker data for all symbols
@@ -70,6 +72,7 @@ class BinanceRestClient:
             logger.error('ticker_fetch_failed', str(e))
             return []
     
+    @api_call(endpoint="exchange_info")
     def get_exchange_info(self) -> Dict:
         """
         Fetch exchange information
@@ -94,6 +97,7 @@ class BinanceRestClient:
             logger.error('exchange_info_fetch_failed', str(e))
             return {}
     
+    @api_call(endpoint="klines", track_parameters=["symbol", "interval", "limit"])
     def get_klines(
         self,
         symbol: str,
@@ -143,6 +147,7 @@ class BinanceRestClient:
             )
             return None
     
+    @api_call(endpoint="volume_period", track_parameters=["symbol", "hours", "interval"])
     def get_volume_for_period(
         self,
         symbol: str,

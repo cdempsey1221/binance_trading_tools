@@ -14,6 +14,7 @@ from src.alerts.manager import AlertManager
 from src.alerts.discord import DiscordNotifier
 from src.alerts.deduplication import AlertDeduplicationDB
 from src.monitoring.logger import get_logger
+from src.monitoring.reporter import log_api_summary
 
 
 logger = get_logger('main')
@@ -124,6 +125,10 @@ class MomentumScanner:
         while True:
             try:
                 await self.run_scan_cycle()
+                
+                # Log API performance summary after each scan cycle
+                log_api_summary()
+                
             except Exception as e:
                 logger.error(
                     'scan_cycle_error',
@@ -136,8 +141,8 @@ class MomentumScanner:
                 'waiting',
                 f'Waiting {scan_interval}s until next scan...'
             )
+            
             await asyncio.sleep(scan_interval)
-
 
 async def main() -> None:
     """Application entry point"""
