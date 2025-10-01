@@ -1,0 +1,26 @@
+universe:
+  cache_ttl: 3600
+  min_hourly_volume: 1000
+
+data:
+  websocket:
+    max_streams_per_connection: 1024
+    max_messages_per_second: 10
+    reconnect_delay: 5
+  rest:
+    rate_limit: 1200
+
+signals:
+  timeframe: "15m"
+  lookback_periods: 8
+  volume_zscore_threshold: 2.0
+  price_change_threshold: 0.05
+  use_atr_normalization: true
+
+alerts:
+  cooldown_minutes: 30
+  discord_webhook_url: "${DISCORD_WEBHOOK_URL}"
+
+monitoring:
+  metrics_interval: 60
+  log_level: "INFO"

@@ -1,0 +1,1 @@
+# ATR/Z-score normalization

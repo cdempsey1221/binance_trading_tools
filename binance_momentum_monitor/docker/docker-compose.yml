@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  momentum-scanner:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: binance-momentum-scanner
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN  # Required for NordVPN
+    devices:
+      - /dev/net/tun  # Required for VPN tunnel
+    environment:
+      # Required: NordVPN authentication
+      - NORDVPN_TOKEN=${NORDVPN_TOKEN}
+      
+      # Required: Discord webhook for alerts
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      
+      # Optional: Signal detection parameters
+      - TIMEFRAME=${TIMEFRAME:-15m}
+      - LOOKBACK_PERIODS=${LOOKBACK_PERIODS:-8}
+      - VOLUME_ZSCORE_THRESHOLD=${VOLUME_ZSCORE_THRESHOLD:-2.0}
+      - PRICE_CHANGE_THRESHOLD=${PRICE_CHANGE_THRESHOLD:-0.05}
+      
+      # Optional: Universe filtering
+      - MIN_HOURLY_VOLUME=${MIN_HOURLY_VOLUME:-1000}
+      - UNIVERSE_CACHE_TTL=${UNIVERSE_CACHE_TTL:-3600}
+      
+      # Optional: Alert management
+      - ALERT_COOLDOWN=${ALERT_COOLDOWN:-30}
+      
+      # Optional: Monitoring
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - METRICS_INTERVAL=${METRICS_INTERVAL:-60}
+      
+      # Optional: Configuration file path
+      - CONFIG_PATH=${CONFIG_PATH:-}
+    volumes:
+      # Persistent database for alert deduplication
+      - scanner-data:/app/data
+      
+      # Optional: Mount custom config file
+      # - ./custom-config.yaml:/app/config/custom.yaml
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1  # Disable IPv6 for VPN stability
+
+volumes:
+  scanner-data:
+    driver: local
