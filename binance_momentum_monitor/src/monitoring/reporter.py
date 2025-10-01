@@ -91,6 +91,7 @@ class SimpleAPIReporter:
             stats = collector.get_basic_stats()
             
             if stats['total_calls'] > 0:
+                # Basic stats
                 logger.info(
                     'api_performance_summary',
                     f"API Performance: {stats['total_calls']} calls, "
@@ -98,8 +99,60 @@ class SimpleAPIReporter:
                     f"{stats['avg_duration_ms']:.0f}ms avg latency",
                     data=stats
                 )
+                
+                # Enhanced endpoint breakdown for logs
+                recent_metrics = collector.get_recent_metrics(100)
+                if recent_metrics:
+                    endpoint_stats = self._calculate_endpoint_stats(recent_metrics)
+                    
+                    logger.info(
+                        'api_endpoint_breakdown',
+                        f"Endpoint breakdown: {len(endpoint_stats)} unique endpoints",
+                        data={'endpoints': endpoint_stats}
+                    )
+            else:
+                logger.debug(
+                    'api_performance_summary',
+                    "No API calls recorded in this session"
+                )
         except Exception as e:
             logger.error('summary_logging_failed', f'Failed to log performance summary: {e}')
+    
+    def _calculate_endpoint_stats(self, metrics: List) -> Dict[str, Dict]:
+        """Calculate statistics for each endpoint"""
+        endpoint_data = {}
+        
+        for metric in metrics:
+            endpoint = metric.endpoint
+            if endpoint not in endpoint_data:
+                endpoint_data[endpoint] = {
+                    'calls': 0,
+                    'successes': 0,
+                    'total_duration': 0.0,
+                    'durations': []
+                }
+            
+            data = endpoint_data[endpoint]
+            data['calls'] += 1
+            data['total_duration'] += metric.duration_ms
+            data['durations'].append(metric.duration_ms)
+            
+            if metric.success:
+                data['successes'] += 1
+        
+        # Calculate final stats
+        result = {}
+        for endpoint, data in endpoint_data.items():
+            durations = data['durations']
+            result[endpoint] = {
+                'calls': data['calls'],
+                'success_rate': (data['successes'] / data['calls']) * 100,
+                'avg_duration_ms': data['total_duration'] / data['calls'],
+                'min_duration_ms': min(durations),
+                'max_duration_ms': max(durations)
+            }
+        
+        return result
 
 
 # Global reporter instance

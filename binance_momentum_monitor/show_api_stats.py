@@ -22,7 +22,7 @@ def main():
         stats = collector.get_basic_stats()
         
         if stats['total_calls'] == 0:
-            print("📊 No API calls recorded yet.")
+            print("📊 No API calls recorded yet...")
             print("💡 Run the momentum scanner first to see API metrics.")
             return
         

@@ -91,6 +91,13 @@ class MomentumScanner:
     
     async def run_scan_cycle(self) -> None:
         """Execute one complete scan of all symbols"""
+        from src.monitoring.metrics import get_metrics_collector
+        
+        # Get metrics before scan cycle
+        collector = get_metrics_collector()
+        pre_cycle_stats = collector.get_basic_stats()
+        pre_cycle_calls = pre_cycle_stats['total_calls']
+        
         logger.info(
             'scan_cycle_start',
             f'Starting scan cycle for {len(self.symbols)} symbols...'
@@ -101,7 +108,20 @@ class MomentumScanner:
             # Small delay to avoid rate limiting
             await asyncio.sleep(0.1)
         
-        logger.info('scan_cycle_complete', 'Scan cycle completed')
+        # Get metrics after scan cycle
+        post_cycle_stats = collector.get_basic_stats()
+        post_cycle_calls = post_cycle_stats['total_calls']
+        cycle_api_calls = post_cycle_calls - pre_cycle_calls
+        
+        logger.info(
+            'scan_cycle_complete', 
+            f'Scan cycle completed - {cycle_api_calls} API calls made',
+            data={
+                'symbols_scanned': len(self.symbols),
+                'api_calls_this_cycle': cycle_api_calls,
+                'total_api_calls': post_cycle_calls
+            }
+        )
     
     async def run(self) -> None:
         """Main execution loop"""

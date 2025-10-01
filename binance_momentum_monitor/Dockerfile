@@ -40,6 +40,7 @@ COPY src/ ./src/
 COPY config/ ./config/
 COPY main.py .
 COPY entrypoint.sh .
+COPY show_api_stats.py .
 
 # Make entrypoint executable
 RUN chmod +x entrypoint.sh
