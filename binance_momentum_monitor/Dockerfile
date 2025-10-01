@@ -27,10 +27,6 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create non-root user early (for proper permissions)
-RUN useradd -m -u 1000 scanner && \
-    echo "scanner ALL=(ALL) NOPASSWD: /usr/sbin/nordvpnd" >> /etc/sudoers
-
 # Copy requirements first (for better layer caching)
 COPY requirements.txt .
 
@@ -48,15 +44,9 @@ COPY entrypoint.sh .
 # Make entrypoint executable
 RUN chmod +x entrypoint.sh
 
-# Change ownership to non-root user
-RUN chown -R scanner:scanner /app
-
-# Switch to non-root user (nordvpn will sudo where needed)
-USER scanner
-
 # Health check - verify Python and core imports work
 HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
     CMD ./venv/bin/python3 -c "from src.core.config import Config; import sys; sys.exit(0)" || exit 1
 
 # Run application via entrypoint (handles NordVPN + app startup)
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["/app/entrypoint.sh"]

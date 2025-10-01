@@ -39,14 +39,14 @@ class MomentumScanner:
         self.universe = SymbolUniverse(
             rest_client=self.rest_client,
             min_hourly_volume=config.universe.min_hourly_volume,
-            cache_ttl=config.universe.cache_ttl
-        )
+            cache_ttl=config.universe.cache_ttl        )
         
         self.momentum_detector = MomentumDetector(
             rest_client=self.rest_client,
             timeframe=config.signals.timeframe,
             lookback_periods=config.signals.lookback_periods,
-            volume_threshold=config.signals.price_change_threshold * 100,  # Convert to percentage
+            volume_window_hours=config.signals.volume_window_hours,
+            volume_threshold=config.signals.volume_zscore_threshold * 100,  # Convert to percentage
             price_threshold=config.signals.price_change_threshold * 100
         )
         
@@ -67,11 +67,12 @@ class MomentumScanner:
     def initialize_symbols(self) -> None:
         """Fetch and cache liquid perpetual symbols"""
         self.symbols = self.universe.get_liquid_perpetuals()
+        
         logger.info(
             'symbols_initialized',
             f'Initialized with {len(self.symbols)} symbols',
             data={'symbol_count': len(self.symbols)}
-        )
+    )
     
     async def scan_symbol(self, symbol: str) -> None:
         """
@@ -80,18 +81,8 @@ class MomentumScanner:
         Args:
             symbol: Symbol to scan
         """
-        # Get current 24hr volume for dynamic thresholding
-        symbol_info = self.universe.get_symbol_info(symbol)
-        if not symbol_info:
-            return
-        
-        avg_hourly_volume = symbol_info.avg_hourly_volume
-        
-        # Analyze for momentum
-        signal = self.momentum_detector.analyze_symbol(
-            symbol,
-            avg_hourly_volume
-        )
+        # Analyze for momentum (volume calculation now done internally)
+        signal = self.momentum_detector.analyze_symbol(symbol)
         
         if signal:
             # Send alert if conditions met

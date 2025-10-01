@@ -44,6 +44,7 @@ class SignalsConfig:
     """Signal detection configuration"""
     timeframe: str = "15m"
     lookback_periods: int = 8
+    volume_window_hours: int = 8
     volume_zscore_threshold: float = 2.0
     price_change_threshold: float = 0.05
     use_atr_normalization: bool = True
@@ -116,10 +117,10 @@ class Config:
                 rest=RestConfig(
                     rate_limit=int(os.getenv('REST_RATE_LIMIT', '1200'))
                 )
-            ),
-            signals=SignalsConfig(
+            ),            signals=SignalsConfig(
                 timeframe=os.getenv('TIMEFRAME', '15m'),
                 lookback_periods=int(os.getenv('LOOKBACK_PERIODS', '8')),
+                volume_window_hours=int(os.getenv('VOLUME_WINDOW_HOURS', '8')),
                 volume_zscore_threshold=float(os.getenv('VOLUME_ZSCORE_THRESHOLD', '2.0')),
                 price_change_threshold=float(os.getenv('PRICE_CHANGE_THRESHOLD', '0.05')),
                 use_atr_normalization=os.getenv('USE_ATR_NORMALIZATION', 'true').lower() == 'true'
@@ -179,8 +180,7 @@ class Config:
                 max_streams_per_connection=ws_data.get('max_streams_per_connection', 1024),
                 max_messages_per_second=ws_data.get('max_messages_per_second', 10),
                 reconnect_delay=ws_data.get('reconnect_delay', 5)
-            ),
-            rest=RestConfig(
+            ),            rest=RestConfig(
                 rate_limit=rest_data.get('rate_limit', 1200)
             )
         )
@@ -189,6 +189,7 @@ class Config:
         signals = SignalsConfig(
             timeframe=signals_data.get('timeframe', '15m'),
             lookback_periods=signals_data.get('lookback_periods', 8),
+            volume_window_hours=signals_data.get('volume_window_hours', 8),
             volume_zscore_threshold=signals_data.get('volume_zscore_threshold', 2.0),
             price_change_threshold=signals_data.get('price_change_threshold', 0.05),
             use_atr_normalization=signals_data.get('use_atr_normalization', True)

@@ -22,6 +22,7 @@ class MomentumDetector:
         rest_client: BinanceRestClient,
         timeframe: str,
         lookback_periods: int,
+        volume_window_hours: int,
         volume_threshold: float,
         price_threshold: float
     ):
@@ -32,34 +33,46 @@ class MomentumDetector:
             rest_client: REST API client
             timeframe: Candlestick timeframe
             lookback_periods: Number of periods to look back
+            volume_window_hours: Hours to look back for volume calculation
             volume_threshold: Volume spike threshold percentage
             price_threshold: Price change threshold percentage
         """
         self.rest_client = rest_client
         self.timeframe = timeframe
         self.lookback_periods = lookback_periods
+        self.volume_window_hours = volume_window_hours
         self.volume_threshold = volume_threshold
         self.price_threshold = price_threshold
     
     def analyze_symbol(
         self,
-        symbol: str,
-        avg_24hr_volume: float
+        symbol: str
     ) -> Optional[MomentumSignal]:
         """
         Analyze a symbol for momentum signals
         
         Args:
             symbol: Trading pair symbol
-            avg_24hr_volume: Average hourly volume over 24 hours
             
         Returns:
             MomentumSignal if conditions met, None otherwise
         """
-        # Dynamic threshold based on liquidity
+        # Calculate volume for configured window
+        period_volume = self.rest_client.get_volume_for_period(
+            symbol, 
+            self.volume_window_hours
+        )
+        
+        if period_volume is None:
+            return None
+        
+        # Convert to average hourly volume for threshold logic
+        avg_hourly_volume = period_volume / self.volume_window_hours
+        
+        # Dynamic threshold based on liquidity (adjusted for hourly average)
         volume_threshold = (
             self.volume_threshold
-            if avg_24hr_volume > 10000
+            if avg_hourly_volume > 1250  # Scaled from 10000/8hrs
             else 250
         )
         

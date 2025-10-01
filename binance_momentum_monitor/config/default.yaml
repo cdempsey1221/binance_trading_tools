@@ -13,6 +13,7 @@ data:
 signals:
   timeframe: "15m"
   lookback_periods: 8
+  volume_window_hours: 8
   volume_zscore_threshold: 2.0
   price_change_threshold: 0.05
   use_atr_normalization: true

@@ -143,6 +143,78 @@ class BinanceRestClient:
             )
             return None
     
+    def get_volume_for_period(
+        self,
+        symbol: str,
+        hours: int,
+        interval: str = "1h"
+    ) -> Optional[float]:
+        """
+        Calculate total volume for a custom time period
+        
+        Args:
+            symbol: Trading pair symbol
+            hours: Number of hours to look back
+            interval: Kline interval for aggregation (default: "1h")
+            
+        Returns:
+            Total volume for the period or None on error
+        """
+        self._check_rate_limit()
+        
+        try:
+            # Calculate how many intervals we need
+            if interval == "1h":
+                limit = hours
+            elif interval == "15m":
+                limit = hours * 4
+            elif interval == "5m":
+                limit = hours * 12
+            elif interval == "1m":
+                limit = hours * 60
+            else:
+                logger.error('unsupported_interval', f'Interval {interval} not supported')
+                return None
+            
+            # Binance has a max limit of 1500, so cap it
+            limit = min(limit, 1500)
+            
+            url = f"{self.BASE_URL}/klines"
+            params = {
+                'symbol': symbol,
+                'interval': interval,
+                'limit': limit
+            }
+            response = self.session.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Check for API error response
+            if isinstance(data, dict) and 'code' in data:
+                logger.error(
+                    'volume_api_error',
+                    f"API Error for {symbol}",
+                    data={'error': data.get('msg')}
+                )
+                return None
+            
+            # Sum up volumes (index 5 is volume in kline data)
+            total_volume = sum(float(kline[5]) for kline in data)
+            
+            logger.debug(
+                'volume_calculated',
+                f'Calculated {hours}h volume for {symbol}: {total_volume}'
+            )
+            return total_volume
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(
+                'volume_fetch_failed',
+                f'Failed to fetch volume for {symbol}',
+                data={'error': str(e)}
+            )
+            return None
+
     def close(self) -> None:
         """Close the session"""
         self.session.close()

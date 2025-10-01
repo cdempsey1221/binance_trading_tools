@@ -13,7 +13,7 @@ sudo /usr/sbin/nordvpnd &
 
 # Wait for the service to start up and create its socket
 echo "⏳ Waiting for NordVPN daemon to initialize..."
-sleep 10
+sleep 15
 
 # Check if NORDVPN_TOKEN is set
 if [ -z "${NORDVPN_TOKEN}" ]; then
