@@ -4,6 +4,7 @@ Structured logging system with JSON output
 
 import json
 import logging
+import os
 import sys
 import uuid
 from datetime import datetime
@@ -103,7 +104,7 @@ class StructuredFormatter(logging.Formatter):
         return record.getMessage()
 
 
-def get_logger(component: str, log_level: str = "INFO") -> StructuredLogger:
+def get_logger(component: str, log_level: str = None) -> StructuredLogger:
     """
     Get a structured logger instance
     
@@ -114,4 +115,9 @@ def get_logger(component: str, log_level: str = "INFO") -> StructuredLogger:
     Returns:
         StructuredLogger instance
     """
+    
+    # Use environment variable if no log_level provided
+    if log_level is None:
+        log_level = os.getenv('LOG_LEVEL', 'INFO')
+    
     return StructuredLogger(component, log_level)

@@ -4,7 +4,7 @@ services:
   momentum-scanner:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: binance-momentum-scanner
     restart: unless-stopped
     cap_add:
@@ -21,7 +21,7 @@ services:
       # Optional: Signal detection parameters
       - TIMEFRAME=${TIMEFRAME:-15m}
       - LOOKBACK_PERIODS=${LOOKBACK_PERIODS:-8}
-      - VOLUME_ZSCORE_THRESHOLD=${VOLUME_ZSCORE_THRESHOLD:-2.0}
+      - VOLUME_SPIKE_THRESHOLD=${VOLUME_SPIKE_THRESHOLD:-150.0}
       - PRICE_CHANGE_THRESHOLD=${PRICE_CHANGE_THRESHOLD:-0.05}
       
       # Optional: Universe filtering

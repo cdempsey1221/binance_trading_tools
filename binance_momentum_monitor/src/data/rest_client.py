@@ -167,6 +167,15 @@ class BinanceRestClient:
         """
         self._check_rate_limit()
         
+        logger.debug(
+            'get_volume_for_period_start',
+            f'Calling get_volume_for_period for {symbol}',
+            data={
+                'symbol': symbol,
+                'window_hours': hours
+            }
+        )
+        
         try:
             # Calculate how many intervals we need
             if interval == "1h":
@@ -193,6 +202,15 @@ class BinanceRestClient:
             response = self.session.get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
+            
+            logger.debug(
+                'get_volume_for_period_end',
+                f'Completed get_volume_for_period for {symbol}',
+                data={
+                    'symbol': symbol,
+                    'response': data
+                }
+            )
             
             # Check for API error response
             if isinstance(data, dict) and 'code' in data:

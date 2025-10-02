@@ -16,9 +16,7 @@ from src.alerts.deduplication import AlertDeduplicationDB
 from src.monitoring.logger import get_logger
 from src.monitoring.reporter import log_api_summary
 
-
 logger = get_logger('main')
-
 
 class MomentumScanner:
     """Main scanner orchestrating the alert system"""
@@ -47,7 +45,7 @@ class MomentumScanner:
             timeframe=config.signals.timeframe,
             lookback_periods=config.signals.lookback_periods,
             volume_window_hours=config.signals.volume_window_hours,
-            volume_threshold=config.signals.volume_zscore_threshold * 100,  # Convert to percentage
+            volume_threshold=config.signals.volume_spike_threshold,
             price_threshold=config.signals.price_change_threshold * 100
         )
         
@@ -82,12 +80,26 @@ class MomentumScanner:
         Args:
             symbol: Symbol to scan
         """
-        # Analyze for momentum (volume calculation now done internally)
-        signal = self.momentum_detector.analyze_symbol(symbol)
-        
-        if signal:
-            # Send alert if conditions met
-            self.alert_manager.send_alert(signal)
+        try:
+            # Analyze for momentum (volume calculation now done internally)
+            logger.info('symbol_analysis_start', f'Starting analysis of {symbol} symbol')
+            signal = self.momentum_detector.analyze_symbol(symbol)
+            
+            if signal:
+                # Send alert if conditions met
+                self.alert_manager.send_alert(signal)
+                
+        except Exception as e:
+            logger.warning(
+                'symbol_scan_error',
+                f'Error scanning symbol {symbol}',
+                data={
+                    'symbol': symbol,
+                    'error': str(e),
+                    'error_type': type(e).__name__
+                }
+            )
+            # Continue with next symbol instead of failing entire cycle
     
     async def run_scan_cycle(self) -> None:
         """Execute one complete scan of all symbols"""
@@ -103,10 +115,27 @@ class MomentumScanner:
             f'Starting scan cycle for {len(self.symbols)} symbols...'
         )
         
+        successful_scans = 0
+        failed_scans = 0
+        
         for symbol in self.symbols:
-            await self.scan_symbol(symbol)
-            # Small delay to avoid rate limiting
-            await asyncio.sleep(0.1)
+            try:
+                await self.scan_symbol(symbol)
+                successful_scans += 1
+                # Small delay to avoid rate limiting
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                failed_scans += 1
+                logger.warning(
+                    'symbol_scan_cycle_error',
+                    f'Failed to scan {symbol} in cycle',
+                    data={
+                        'symbol': symbol,
+                        'error': str(e),
+                        'error_type': type(e).__name__
+                    }
+                )
+                # Continue with next symbol
         
         # Get metrics after scan cycle
         post_cycle_stats = collector.get_basic_stats()
@@ -118,6 +147,8 @@ class MomentumScanner:
             f'Scan cycle completed - {cycle_api_calls} API calls made',
             data={
                 'symbols_scanned': len(self.symbols),
+                'successful_scans': successful_scans,
+                'failed_scans': failed_scans,
                 'api_calls_this_cycle': cycle_api_calls,
                 'total_api_calls': post_cycle_calls
             }

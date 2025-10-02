@@ -29,7 +29,7 @@ class MomentumSignal:
     price_change_pct: float
     candle_timestamp: int
     timeframe: str
-    volume_zscore: Optional[float] = None
+    volume_spike_threshold: Optional[float] = None
     atr_normalized_return: Optional[float] = None
     signal_strength: Optional[float] = None
 
