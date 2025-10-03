@@ -138,19 +138,21 @@ class Config:
     @staticmethod
     def _interpolate_env_vars(content: str) -> str:
         """
-        Replace ${VAR_NAME} with environment variable values
+        Replace ${VAR_NAME:-default} with environment variable values or defaults
         
         Args:
-            content: Raw YAML content with ${VAR} placeholders
+            content: Raw YAML content with ${VAR:-default} placeholders
             
         Returns:
             Content with environment variables interpolated
         """
-        pattern = re.compile(r'\$\{([^}]+)\}')
+        # Pattern to match ${VAR} or ${VAR:-default}
+        pattern = re.compile(r'\$\{([^}:]+)(?::-([^}]*))?\}')
         
         def replacer(match):
             var_name = match.group(1)
-            return os.getenv(var_name, '')
+            default_value = match.group(2) if match.group(2) is not None else ''
+            return os.getenv(var_name, default_value)
         
         return pattern.sub(replacer, content)
     

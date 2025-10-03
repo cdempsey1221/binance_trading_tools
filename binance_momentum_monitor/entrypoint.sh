@@ -60,6 +60,14 @@ echo "=========================================="
 echo "📋 Application Configuration:"
 echo "   Timeframe: ${TIMEFRAME:-15m}"
 echo "   Lookback Periods: ${LOOKBACK_PERIODS:-8}"
+echo "   Volume Window: ${VOLUME_WINDOW_HOURS:-8} hours"
+echo "   Volume Spike Threshold: ${VOLUME_SPIKE_THRESHOLD:-150.0}%"
+
+# Calculate price change percentage for display (portable shell calculation)
+PRICE_CHANGE_DECIMAL=${PRICE_CHANGE_THRESHOLD:-0.05}
+PRICE_CHANGE_PERCENT=$(echo "$PRICE_CHANGE_DECIMAL" | awk '{printf "%.1f", $1 * 100}')
+echo "   Price Change Threshold: ${PRICE_CHANGE_DECIMAL} (${PRICE_CHANGE_PERCENT}%)"
+
 echo "   Min Hourly Volume: ${MIN_HOURLY_VOLUME:-1000} USD"
 echo "   Alert Cooldown: ${ALERT_COOLDOWN:-30} minutes"
 echo "   Log Level: ${LOG_LEVEL:-INFO}"
