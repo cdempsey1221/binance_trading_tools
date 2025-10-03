@@ -108,11 +108,15 @@ class MomentumDetector:
             }
         )
         
+        # Calculate volume spike using same timeframe as volume window
+        # For 8-hour window with 15-minute candles: 8 * 60 / 15 = 32 periods
+        klines_needed = (self.volume_window_hours * 60) // 15  # 32 for 8 hours
+        
         # Fetch candlestick data
         klines = self.rest_client.get_klines(
             symbol,
             self.timeframe,
-            self.lookback_periods + 1
+            klines_needed + 1
         )
         
         if not klines:
@@ -154,32 +158,34 @@ class MomentumDetector:
         df['open'] = pd.to_numeric(df['open'])
         df['close'] = pd.to_numeric(df['close'])
         
-        # Calculate volume spike
-        avg_volume = float(df['volume'].iloc[:-1].mean())
-        current_volume = float(df['volume'].iloc[-1])
+        current_volume = float(df['volume'].iloc[-1])      # Latest 15-minute
         
-        if avg_volume == 0:
-            logger.debug(
-                'symbol_analysis_skip_zero_volume',
-                f'Skipping {symbol} - zero average volume',
-                data={
-                    'symbol': symbol,
-                    'reason': 'zero_avg_volume',
-                    'avg_volume': avg_volume
-                }
-            )
-            return None
+        # Short-term spike (2-hour comparison)
+        short_avg_volume = float(df['volume'].iloc[-9:-1].mean())  # Last 8 periods
+        short_spike_pct = float((current_volume / short_avg_volume - 1) * 100)
+
+        # Medium-term spike (if you fetched 33 klines)
+        if len(df) >= 33:
+            long_avg_volume = float(df['volume'].iloc[:-1].mean())  # 32 periods
+            long_spike_pct = float((current_volume / long_avg_volume - 1) * 100)
+        else:
+            long_spike_pct = short_spike_pct
         
-        volume_spike_pct = float((current_volume / avg_volume - 1) * 100)
+        # Use the short spike for detection (more sensitive)
+        volume_spike_pct = short_spike_pct
+        avg_volume = short_avg_volume
         
+        # But log both for analysis
         logger.debug(
             'volume_spike_calculated',
             f'Volume spike calculated for {symbol}',
             data={
                 'symbol': symbol,
-                'avg_volume': float(avg_volume),
+                'short_spike_pct': float(short_spike_pct),  # 2-hour
+                'long_spike_pct': float(long_spike_pct),    # 8-hour
                 'current_volume': float(current_volume),
-                'volume_spike_pct': float(volume_spike_pct),
+                'avg_volume': float(avg_volume),
+                'long_avg_volume': float(long_avg_volume),
                 'volume_threshold': volume_threshold
             }
         )
