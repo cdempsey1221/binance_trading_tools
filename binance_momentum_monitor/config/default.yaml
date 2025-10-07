@@ -1,5 +1,5 @@
 universe:
-  cache_ttl: ${CACHE_TTL:-3600}
+  cache_ttl: ${CACHE_TTL:-600}
   min_hourly_volume: ${MIN_HOURLY_VOLUME:-1000}
 
 data:

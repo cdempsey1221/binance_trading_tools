@@ -62,38 +62,90 @@ class DiscordNotifier:
         except requests.exceptions.RequestException as e:
             logger.error(
                 'alert_send_failed',
-                f'Failed to send alert for {signal.symbol}',
-                data={'error': str(e)}
+                f'Failed to send alert for {signal.symbol}',                data={'error': str(e)}
             )
             return False
     
     def _format_alert(self, signal: MomentumSignal) -> str:
         """
-        Format momentum signal as Discord message
+        Format momentum signal as comprehensive Discord message
         
         Args:
             signal: MomentumSignal to format
             
         Returns:
-            Formatted message string
+            Formatted message string with multi-timeframe analysis
         """
+        # Header with symbol and momentum score
+        score_display = f"{signal.momentum_score}/10" if signal.momentum_score is not None else "N/A"
+        stage_emoji = {
+            'early': '🌱',
+            'developing': '📈',
+            'mature': '🔥',
+            'none': '⚪'
+        }
+        stage = signal.momentum_stage or 'none'
+        
         message = (
             f"🚨 **MOMENTUM ALERT** 🚨\n"
-            f"**{signal.symbol}**\n"
-            f"Volume: +{signal.volume_spike_pct:.1f}%\n"
-            f"Price: +{signal.price_change_pct:.1f}%\n"
-            f"Timeframe: {signal.timeframe}"
+            f"**{signal.symbol}** @ ${signal.current_price:.6f}\n"
+            f"{stage_emoji.get(stage, '⚪')} Stage: **{stage.upper()}** | Score: **{score_display}**\n"
+            f"───────────────────────────\n"
         )
         
-        # Add optional enrichment data
-        if signal.volume_zscore is not None:
-            message += f"\nVolume Z-Score: {signal.volume_zscore:.2f}"
+        # Multi-timeframe price analysis
+        message += "**📊 PRICE MOVEMENT**\n"
+        if signal.price_change_current_bar is not None:
+            sign = "+" if signal.price_change_current_bar >= 0 else ""
+            message += f"Current Bar (15m): {sign}{signal.price_change_current_bar:.2f}%\n"
         
+        if signal.price_change_1hour is not None and signal.price_change_1hour != 0:
+            sign = "+" if signal.price_change_1hour >= 0 else ""
+            message += f"1-Hour Trend: {sign}{signal.price_change_1hour:.2f}%\n"
+        
+        if signal.price_change_2hour is not None and signal.price_change_2hour != 0:
+            sign = "+" if signal.price_change_2hour >= 0 else ""
+            message += f"2-Hour Trend: {sign}{signal.price_change_2hour:.2f}%\n"
+        
+        if signal.price_change_4hour is not None and signal.price_change_4hour != 0:
+            sign = "+" if signal.price_change_4hour >= 0 else ""
+            message += f"4-Hour Trend: {sign}{signal.price_change_4hour:.2f}%\n"
+        
+        # Volume metrics
+        message += "\n**📈 VOLUME METRICS**\n"
+        sign = "+" if signal.volume_spike_pct >= 0 else ""
+        message += f"Volume Spike: {sign}{signal.volume_spike_pct:.1f}%\n"
+        
+        if signal.volume_building is not None:
+            building_status = "✅ Building" if signal.volume_building else "❌ Not Building"
+            message += f"Volume Status: {building_status}\n"
+        
+        if signal.volume_zscore is not None:
+            message += f"Volume Z-Score: {signal.volume_zscore:.2f}σ\n"
+        
+        # Signal quality indicators
+        message += "\n**✨ SIGNAL QUALITY**\n"
+        
+        if signal.trends_aligned is not None:
+            trend_status = "✅ Aligned" if signal.trends_aligned else "⚠️ Conflicting"
+            message += f"Trend Alignment: {trend_status}\n"
+        
+        if signal.volume_price_sync is not None:
+            sync_status = "✅ Synchronized" if signal.volume_price_sync else "⚠️ Diverging"
+            message += f"Vol-Price Sync: {sync_status}\n"
+        
+        if signal.volatility is not None:
+            message += f"Volatility (ATR): {signal.volatility:.2f}%\n"
+        
+        # Timeframe footer
+        message += f"\n⏰ Timeframe: **{signal.timeframe}**"
+        
+        # Add optional legacy enrichment data
         if signal.atr_normalized_return is not None:
             message += f"\nATR Normalized: {signal.atr_normalized_return:.2f}σ"
         
         if signal.signal_strength is not None:
-            message += f"\nSignal Strength: {signal.signal_strength:.1f}/10"
+            message += f"\nLegacy Strength: {signal.signal_strength:.1f}/10"
         
         return message
     
