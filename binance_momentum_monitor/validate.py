@@ -22,7 +22,7 @@ def check_imports():
         from src.signals.momentum import MomentumDetector
         from src.alerts.manager import AlertManager
         from src.alerts.discord import DiscordNotifier
-        from src.alerts.deduplication import AlertDeduplicationDB
+        from src.alerts.deduplication import AlertDeduplicationDB, AlertDeduplicationMySQL
         from src.monitoring.logger import get_logger
         print("  ✅ All imports successful")
         return True
@@ -57,35 +57,84 @@ def check_config():
 def check_database():
     """Verify database operations work"""
     print("\n🔍 Checking database operations...")
-    try:
-        from src.alerts.deduplication import AlertDeduplicationDB
-        import tempfile
-        
-        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
-            db_path = f.name
-        
+    
+    # Check if DATABASE_URL is set (production MySQL)
+    database_url = os.getenv('DATABASE_URL')
+    
+    if database_url:
+        print("  → Testing MySQL database...")
         try:
-            db = AlertDeduplicationDB(db_path)
+            from src.alerts.deduplication import AlertDeduplicationMySQL
+            from src.core.types import MomentumSignal
+            from datetime import datetime
+            
+            db = AlertDeduplicationMySQL(database_url)
+            
+            # Create a test signal
+            test_signal = MomentumSignal(
+                symbol='BTCUSDT',
+                timeframe='15m',
+                candle_timestamp=int(datetime.now().timestamp()),
+                volume_spike=1.5,
+                price_change=2.5,
+                volume_z_score=2.0,
+                quote_volume=1000000.0,
+                volume_building=True,
+                higher_timeframe_alignment=True,
+                momentum_score=6,
+                signal_time=datetime.now()
+            )
             
             # Test storage
-            result = db.store_alert('BTCUSDT', '15m', 1234567890, 'test_sig')
-            assert result is True
+            result = db.store_alert(test_signal)
+            assert result is True, "First alert should be stored"
             
             # Test duplicate prevention
-            result = db.store_alert('BTCUSDT', '15m', 1234567890, 'test_sig')
-            assert result is False
+            result = db.store_alert(test_signal)
+            assert result is False, "Duplicate alert should be rejected"
             
             # Test existence check
-            exists = db.alert_exists('BTCUSDT', '15m', 1234567890)
-            assert exists is True
+            exists = db.alert_exists(test_signal.symbol, test_signal.timeframe, test_signal.candle_timestamp)
+            assert exists is True, "Alert should exist"
             
-            print("  ✅ Database operations working")
+            print("  ✅ MySQL database operations working")
             return True
-        finally:
-            os.unlink(db_path)
-    except Exception as e:
-        print(f"  ❌ Database check failed: {e}")
-        return False
+        except Exception as e:
+            print(f"  ❌ MySQL database check failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    else:
+        print("  → DATABASE_URL not set, testing SQLite fallback...")
+        try:
+            from src.alerts.deduplication import AlertDeduplicationDB
+            import tempfile
+            
+            with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
+                db_path = f.name
+            
+            try:
+                db = AlertDeduplicationDB(db_path)
+                
+                # Test storage
+                result = db.store_alert('BTCUSDT', '15m', 1234567890, 'test_sig')
+                assert result is True
+                
+                # Test duplicate prevention
+                result = db.store_alert('BTCUSDT', '15m', 1234567890, 'test_sig')
+                assert result is False
+                
+                # Test existence check
+                exists = db.alert_exists('BTCUSDT', '15m', 1234567890)
+                assert exists is True
+                
+                print("  ✅ SQLite database operations working")
+                return True
+            finally:
+                os.unlink(db_path)
+        except Exception as e:
+            print(f"  ❌ SQLite database check failed: {e}")
+            return False
 
 
 def check_logging():

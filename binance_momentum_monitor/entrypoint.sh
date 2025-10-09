@@ -33,6 +33,15 @@ echo "⚙️  Configuring VPN settings..."
 nordvpn set technology OpenVPN
 nordvpn set protocol tcp
 
+# Enable LAN discovery for Docker network
+# echo "🔧 Enabling LAN discovery..."
+# nordvpn set lan-discovery enable
+
+# Whitelist Docker network subnet so it bypasses VPN
+echo "🔧 Whitelisting Docker network (172.21.0.0/16)..."
+nordvpn whitelist add subnet 172.21.0.0/16
+echo "✅ Docker network (172.21.0.0/16) whitelisted - bypassing VPN"
+
 # Connect to a NordVPN server in Portugal
 echo "🌐 Connecting to NordVPN (Portugal - pt125)..."
 if ! nordvpn connect pt125; then

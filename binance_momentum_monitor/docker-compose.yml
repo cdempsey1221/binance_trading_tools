@@ -6,6 +6,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: binance-momentum-scanner
+    image: cdempsey1221/binance-momentum-monitor:1.0-upgrade-8hr
     restart: unless-stopped
     cap_add:
       - NET_ADMIN  # Required for NordVPN
@@ -15,8 +16,10 @@ services:
       # Required: NordVPN authentication
       - NORDVPN_TOKEN=${NORDVPN_TOKEN}
       
-      # Required: Discord webhook for alerts
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      # Required: Discord webhook for alerts      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}      
+      
+      # DB - Using IP address to bypass DNS resolution issues with VPN
+      - DATABASE_URL=mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@172.21.0.3:3306/momentum_signal_monitor
       
       # Optional: Signal detection parameters
       - TIMEFRAME=${TIMEFRAME:-15m}
@@ -50,7 +53,13 @@ services:
         max-file: "3"
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=1  # Disable IPv6 for VPN stability
+    networks:
+      - azerothcore-wotlk_ac-network
 
 volumes:
   scanner-data:
     driver: local
+
+networks:
+  azerothcore-wotlk_ac-network:
+    external: true

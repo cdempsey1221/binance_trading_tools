@@ -12,7 +12,7 @@ from src.data.rest_client import BinanceRestClient
 from src.signals.momentum import MomentumDetector
 from src.alerts.manager import AlertManager
 from src.alerts.discord import DiscordNotifier
-from src.alerts.deduplication import AlertDeduplicationDB
+from src.alerts.deduplication import AlertDeduplicationMySQL
 from src.monitoring.logger import get_logger
 from src.monitoring.reporter import log_api_summary
 
@@ -38,7 +38,8 @@ class MomentumScanner:
         self.universe = SymbolUniverse(
             rest_client=self.rest_client,
             min_hourly_volume=config.universe.min_hourly_volume,
-            cache_ttl=config.universe.cache_ttl        )
+            cache_ttl=config.universe.cache_ttl        
+        )
         
         self.momentum_detector = MomentumDetector(
             rest_client=self.rest_client,
@@ -53,7 +54,10 @@ class MomentumScanner:
             webhook_url=config.alerts.discord_webhook_url
         )
         
-        dedup_db = AlertDeduplicationDB()
+        # Initialize MySQL deduplication database
+        if not config.database.url:
+            raise ValueError("Database URL is required in configuration")
+        dedup_db = AlertDeduplicationMySQL(config.database.url)
         
         self.alert_manager = AlertManager(
             discord_notifier=discord_notifier,
@@ -237,7 +241,6 @@ async def main() -> None:
     # Create and run scanner
     scanner = MomentumScanner(config)
     await scanner.run()
-
 
 if __name__ == "__main__":
     asyncio.run(main())

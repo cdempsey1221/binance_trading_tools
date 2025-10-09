@@ -22,6 +22,9 @@ alerts:
   cooldown_minutes: ${COOLDOWN_MINUTES:-30}
   discord_webhook_url: "${DISCORD_WEBHOOK_URL}"
 
+database:
+  url: "${DATABASE_URL}"
+
 monitoring:
   metrics_interval: ${METRICS_INTERVAL:-60}
   log_level: "${LOG_LEVEL:-DEBUG}"

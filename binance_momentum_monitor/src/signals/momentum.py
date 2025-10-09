@@ -72,11 +72,11 @@ class MomentumDetector:
         price_analysis = self._analyze_price_momentum(df)
         volatility = self._calculate_volatility(df)
         
-        # NEW: Calculate price acceleration
+        # Calculate price acceleration
         acceleration = self._calculate_price_acceleration(df)
         
-        # Calculate momentum score with acceleration
-        momentum_score = self._calculate_momentum_score(
+        # Calculate momentum score with acceleration (now returns score and breakdown)
+        momentum_score, score_breakdown = self._calculate_momentum_score(
             volume_analysis,
             price_analysis,
             volatility,
@@ -88,7 +88,7 @@ class MomentumDetector:
                                 volatility, momentum_score, acceleration)
         
         # Check if momentum signal conditions are met
-        signal_threshold = 4
+        signal_threshold = 6
         
         # Volume requirement: Must have positive volume (not collapsing)
         if volume_analysis['spike_pct'] < -80:
@@ -102,7 +102,20 @@ class MomentumDetector:
                 }
             )
             return None
-        
+
+        # recency requirement: Price change in last 3 bars must exceed threshold
+        if price_analysis['change_3bars'] < self.price_threshold:
+            logger.debug(
+                'symbol_analysis_no_signal',
+                f'Failed price recency check for {symbol} - 3-bar change below threshold',
+                data={
+                    'symbol': symbol,
+                    '3_bar_change': price_analysis['change_3bars'],
+                    'threshold': self.price_threshold
+                }
+            )
+            return None
+
         # Trend alignment check: Short and long-term trends must agree
         change_1h = price_analysis.get('change_1hour', 0)
         change_2h = price_analysis.get('change_2hour', 0)
@@ -122,8 +135,7 @@ class MomentumDetector:
                     'change_2h': change_2h,
                     'change_4h': change_4h,
                     'reason': 'trend_conflict'
-                }
-            )
+                }            )
             return None
         
         if momentum_score >= signal_threshold:
@@ -136,6 +148,7 @@ class MomentumDetector:
                     price_analysis,
                     volatility,
                     momentum_score,
+                    score_breakdown,  # Pass the score breakdown
                     acceleration,
                     stage
                 )
@@ -229,22 +242,45 @@ class MomentumDetector:
             ]
         )
         
-        # Convert to numeric types
-        numeric_cols = ['volume', 'open', 'high', 'low', 'close', 'quote_volume']
+        # Convert to numeric types (including TBQR-related columns)
+        numeric_cols = [
+            'volume', 'open', 'high', 'low', 'close', 'quote_volume',
+            'taker_buy_base', 'taker_buy_quote'  # Add for TBQR calculation
+        ]
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col])
         
         return df
+    
+    def _tbqr_interpretation(self, tbqr: float) -> str:
+        """
+        Interpret TBQR value
+        
+        Args:
+            tbqr: Taker Buy Quote Ratio
+            
+        Returns:
+            Interpretation string
+        """
+        if tbqr > 0.55:
+            return 'bullish'
+        elif tbqr < 0.45:
+            return 'bearish'
+        else:
+            return 'neutral'
 
     def _analyze_volume_pattern(self, df: pd.DataFrame) -> dict:
         """
         Analyze volume patterns for momentum detection
         
+        Includes TBQR (Taker Buy Quote Ratio) analysis to detect aggressive buying pressure.
+        TBQR = taker_buy_quote / quote_volume (percentage of volume from buyers hitting ask)
+        
         Args:
             df: DataFrame with market data
             
         Returns:
-            Dictionary with volume analysis results
+            Dictionary with volume analysis results including TBQR metrics
         """
         last_4_volumes = df['volume'].iloc[-4:].values
         
@@ -259,13 +295,90 @@ class MomentumDetector:
         current_volume = last_4_volumes[-1]
         volume_spike_pct = ((current_volume / recent_avg_volume) - 1) * 100 if recent_avg_volume > 0 else 0
         
+        # ========================================
+        # TBQR ANALYSIS - Buying Pressure Detection
+        # ========================================
+        
+        # Calculate TBQR for each bar (handle division by zero)
+        tbqr_values = pd.Series(dtype=float)
+        if 'taker_buy_quote' in df.columns and 'quote_volume' in df.columns:
+            # Safe division with handling of zero quote volumes
+            quote_volumes = df['quote_volume'].replace(0, pd.NA)
+            tbqr_values = df['taker_buy_quote'] / quote_volumes
+            tbqr_values = tbqr_values.fillna(0.5)  # Default to neutral 50/50 if no data
+        else:
+            # Fallback if columns don't exist
+            tbqr_values = pd.Series([0.5] * len(df), index=df.index)
+        
+        # Current bar TBQR
+        tbqr_current = float(tbqr_values.iloc[-1])
+        
+        # TBQR Z-score over last 20 bars (statistical significance)
+        if len(tbqr_values) >= 20:
+            tbqr_mean_20 = tbqr_values.iloc[-20:].mean()
+            tbqr_std_20 = tbqr_values.iloc[-20:].std()
+            tbqr_zscore = (tbqr_current - tbqr_mean_20) / tbqr_std_20 if tbqr_std_20 > 0 else 0
+        else:
+            tbqr_mean_20 = tbqr_values.mean()
+            tbqr_std_20 = tbqr_values.std()
+            tbqr_zscore = 0
+        
+        # TBQR Delta - change from 3-bar average (acceleration)
+        if len(tbqr_values) >= 4:
+            tbqr_prev_3bar_avg = tbqr_values.iloc[-4:-1].mean()
+            tbqr_delta = tbqr_current - tbqr_prev_3bar_avg
+        else:
+            tbqr_prev_3bar_avg = 0.5
+            tbqr_delta = 0
+        
+        # ========================================
+        # QUOTE VOLUME Z-SCORE - USD Participation Level
+        # ========================================
+        
+        # Calculate quote volume z-score (measures overall USD participation)
+        quote_volumes = df['quote_volume']
+        qv_current = float(quote_volumes.iloc[-1])
+        
+        if len(quote_volumes) >= 20:
+            qv_mean_20 = quote_volumes.iloc[-20:].mean()
+            qv_std_20 = quote_volumes.iloc[-20:].std()
+            qv_zscore = (qv_current - qv_mean_20) / qv_std_20 if qv_std_20 > 0 else 0
+        else:
+            qv_mean_20 = quote_volumes.mean()
+            qv_std_20 = quote_volumes.std()
+            qv_zscore = 0
+        
+        logger.debug(
+            'volume_analysis_complete',
+            f'Volume and TBQR metrics calculated',
+            data={
+                'volume_spike_pct': volume_spike_pct,
+                'volume_building': volume_building,
+                'tbqr_current': tbqr_current,
+                'tbqr_zscore': tbqr_zscore,
+                'tbqr_delta': tbqr_delta,
+                'tbqr_mean_20': tbqr_mean_20,
+                'tbqr_interpretation': self._tbqr_interpretation(tbqr_current),
+                'quote_volume_current': qv_current,
+                'quote_volume_zscore': qv_zscore,
+                'quote_volume_mean_20': qv_mean_20
+            }
+        )
+        
         return {
             'building': bool(volume_building),
             'spike_pct': float(volume_spike_pct),
             'current': float(current_volume),
-            'recent_avg': float(recent_avg_volume)
+            'recent_avg': float(recent_avg_volume),
+            # TBQR metrics - buying pressure indicators
+            'tbqr_current': float(tbqr_current),
+            'tbqr_zscore': float(tbqr_zscore),
+            'tbqr_delta': float(tbqr_delta),
+            'tbqr_mean': float(tbqr_mean_20),
+            # Quote volume participation
+            'quote_volume_zscore': float(qv_zscore)
         }
-        
+    
     def _analyze_price_momentum(self, df: pd.DataFrame) -> dict:
         """
         Analyze price momentum over multiple bars
@@ -357,56 +470,81 @@ class MomentumDetector:
         # ========================================
         # 1. VOLUME ANALYSIS (0-3 points)
         # ========================================
+        volume_analysis_contribution = 0
         
         if volume_analysis['building']:
-            score += 2
-            logger.debug('volume_building_detected', 'Sequential volume increase', 
+            volume_analysis_contribution += 2
+            logger.debug('volume_building_detected', 'Sequential volume increase',
                         data={'points': 2})
-        
         if volume_analysis['spike_pct'] > self.volume_threshold * 2:  # >50%
-            score += 1
+            volume_analysis_contribution += 1
         elif volume_analysis['spike_pct'] > self.volume_threshold:  # >25%
-            score += 0.5
-        
-        # ========================================
+            volume_analysis_contribution += 0.5
+
+        # Cap total volume contribution at 2 points
+        volume_analysis_contribution = min(volume_analysis_contribution, 2)
+        score += volume_analysis_contribution        # ========================================
         # 2. PRICE ACCELERATION (0-3 points)
         # ========================================
+        # Use the calculated acceleration (now in percentage points, not percentage change)
+        price_acceleration_contribution = 0
         
-        # Use the calculated acceleration
-        if acceleration > 100:  # Strong acceleration
-            score += 3
+        if acceleration > 0.5:  # Strong acceleration (ROC increased by >0.5% points)
+            price_acceleration_contribution += 3
             logger.debug('strong_acceleration_detected', 'Price momentum building rapidly',
                         data={'acceleration': acceleration, 'points': 3})
-        elif acceleration > 50:  # Moderate acceleration
-            score += 2
+        elif acceleration > 0.25:  # Moderate acceleration (ROC increased by >0.25% points)
+            price_acceleration_contribution += 2
             logger.debug('moderate_acceleration_detected', 'Price momentum building',
                         data={'acceleration': acceleration, 'points': 2})
-        elif acceleration > 25:  # Mild acceleration
-            score += 1
+        elif acceleration > 0.1:  # Mild acceleration (ROC increased by >0.1% points)
+            price_acceleration_contribution += 1
             logger.debug('mild_acceleration_detected', 'Price starting to accelerate',
                         data={'acceleration': acceleration, 'points': 1})
-        
+
+        # Cap total acceleration contribution at 3 points
+        price_acceleration_contribution = min(price_acceleration_contribution, 3)
+        score += price_acceleration_contribution
+
         # ========================================
-        # 3. TREND ALIGNMENT (0-2 points max)
+        # 3. PRICE TREND ALIGNMENT (0-3 points max)
         # ========================================
+        # Weighted by recency - recent moves matter more
+        price_trend_contribution = 0
         
-        if price_analysis.get('change_4hour', 0) > 2.5:
-            score += 1
-        elif price_analysis.get('change_2hour', 0) > 2.0:
-            score += 1
-        elif price_analysis.get('change_1hour', 0) > 1.0:
-            score += 0.5
+        if price_analysis.get('current_bar', 0) > self.price_threshold:
+            price_trend_contribution += 1  # Most weight on recent bar
+
+        if price_analysis.get('change_3bars', 0) > self.price_threshold:
+            price_trend_contribution += 0.8
+        
+        if price_analysis.get('change_1hour', 0) > self.price_threshold * 1.2:
+            price_trend_contribution += 0.7  # Most weight on recent
+            
+        if price_analysis.get('change_2hour', 0) > self.price_threshold * 1.5:
+            price_trend_contribution += 0.7  # Medium weight
+            
+        if price_analysis.get('change_4hour', 0) > self.price_threshold * 2:
+            price_trend_contribution += 0.5  # Least weight on old moves
         
         if price_analysis['trending_up']:
-            score += 1
+            price_trend_contribution += 0.5
+        
+        # Cap total trend contribution at 3 points
+        price_trend_contribution = min(price_trend_contribution, 3)
+        score += price_trend_contribution
         
         # ========================================
         # 4. MOMENTUM QUALITY (0-2 points)
         # ========================================
         
+        breakout_contribution = 0
+        volume_price_align_contribution = 0
+        
         # Breakout from consolidation
-        if volatility < 0.5 and price_analysis['current_bar'] > self.price_threshold:
-            score += 2
+        low_volatility_threshold = self.price_threshold / 3  # e.g., 0.5% if threshold is 1.5%
+        if volatility < low_volatility_threshold and price_analysis['current_bar'] > self.price_threshold:
+            breakout_contribution += 2
             logger.debug('breakout_detected', 'Low volatility breakout',
                         data={'volatility': volatility, 
                             'price_move': price_analysis['current_bar'], 
@@ -414,14 +552,27 @@ class MomentumDetector:
         # Volume-price alignment
         elif (volume_analysis['spike_pct'] > 25 and 
             price_analysis['current_bar'] > 0.5):
-            score += 1
+            volume_price_align_contribution += 1
             logger.debug('volume_price_alignment', 'Volume confirms price',
                         data={'volume_spike': volume_analysis['spike_pct'],
                             'price_move': price_analysis['current_bar'],
                             'points': 1})
         
+        # Total quality score
+        quality_contribution = breakout_contribution + volume_price_align_contribution
+        score += quality_contribution
+
         # Cap score at 10
         final_score = min(int(score), 10)
+        
+        # Prepare score breakdown
+        score_breakdown = {
+            'volume_score': float(volume_analysis_contribution),
+            'price_score': float(price_acceleration_contribution),
+            'trend_score': float(price_trend_contribution),
+            'quality_score': float(quality_contribution),
+            'volatility_score': float(volatility)  # Store raw volatility as volatility_score
+        }
         
         logger.debug(
             'momentum_score_calculated',
@@ -430,6 +581,7 @@ class MomentumDetector:
                 'raw_score': score,
                 'final_score': final_score,
                 'acceleration': acceleration,
+                'breakdown': score_breakdown,
                 'components': {
                     'volume_building': volume_analysis['building'],
                     'volume_spike': volume_analysis['spike_pct'],
@@ -440,8 +592,8 @@ class MomentumDetector:
             }
         )
         
-        return final_score
-
+        return final_score, score_breakdown
+    
     def _is_bullish(self, price_analysis: dict) -> bool:
         """
         Check if the momentum is bullish (positive price movement)
@@ -455,7 +607,12 @@ class MomentumDetector:
         return price_analysis['change_3bars'] > 0 or price_analysis['current_bar'] > 0
     
     def _calculate_price_acceleration(self, df: pd.DataFrame) -> float:
-        """Calculate if price movement is accelerating"""
+        """
+        Calculate price acceleration using absolute difference in ROC.
+        
+        Returns acceleration as percentage points change in ROC.
+        Example: If ROC went from 0.2% to 0.8%, acceleration = 0.6
+        """
         if len(df) < 6:
             return 0.0
         
@@ -472,12 +629,9 @@ class MomentumDetector:
         prev_bars = 3  # Number of bars between -6 and -3
         previous_roc = ((prev_end - prev_start) / prev_start) / prev_bars if prev_start != 0 else 0
         
-        # Acceleration = change in rate of change
-        if previous_roc != 0:
-            acceleration = ((recent_roc - previous_roc) / abs(previous_roc)) * 100
-        else:
-            # If previous ROC was 0, any positive recent ROC is acceleration
-            acceleration = 100.0 if recent_roc > 0 else 0.0
+        # Acceleration = absolute difference in ROC (converted to percentage points)
+        # This avoids division-by-zero issues and extreme outliers
+        acceleration = (recent_roc - previous_roc) * 100
         
         logger.debug(
             'price_acceleration_calculated',
@@ -485,7 +639,8 @@ class MomentumDetector:
             data={
                 'recent_roc_per_bar': recent_roc * 100,  # Convert to percentage
                 'previous_roc_per_bar': previous_roc * 100,
-                'acceleration': acceleration
+                'acceleration': acceleration,
+                'interpretation': 'Strong' if acceleration > 0.5 else 'Moderate' if acceleration > 0.25 else 'Mild' if acceleration > 0.1 else 'Weak'
             }
         )
         
@@ -541,12 +696,13 @@ class MomentumDetector:
                 'momentum_score': score,                'current_volume': volume_analysis['current'],
                 'recent_avg_volume': volume_analysis['recent_avg']
             }
-        )
-
+        )    
+    
     def _create_momentum_signal(self, symbol: str, df: pd.DataFrame,
                             volume_analysis: dict, price_analysis: dict,
                             volatility: float, momentum_score: int,
-                            acceleration: float, stage: str) -> MomentumSignal:
+                            score_breakdown: dict, acceleration: float, 
+                            stage: str) -> MomentumSignal:
         """
         Create comprehensive momentum signal object with all analysis data
         
@@ -557,6 +713,7 @@ class MomentumDetector:
             price_analysis: Price momentum analysis results
             volatility: Recent market volatility
             momentum_score: Calculated momentum score
+            score_breakdown: Dictionary with individual score components
             acceleration: Price acceleration metric
             stage: Momentum stage (early/developing/mature/none)
             
@@ -619,16 +776,16 @@ class MomentumDetector:
             volume_building=volume_analysis['building'],
             volume_zscore=volume_zscore,
             current_volume=current_volume,
-            avg_volume=volume_analysis['recent_avg'],
+            avg_volume=volume_analysis['recent_avg'],            
             # Momentum analysis
             momentum_score=momentum_score,
             momentum_stage=stage,
-            # Score breakdown (set to 0 since we don't have detailed breakdown)
-            volume_score=0,
-            price_score=0,
-            trend_score=0,
-            quality_score=0,
-            volatility_score=0,
+            # Score breakdown (now populated from calculation)
+            volume_score=score_breakdown['volume_score'],
+            price_score=score_breakdown['price_score'],
+            trend_score=score_breakdown['trend_score'],
+            quality_score=score_breakdown['quality_score'],
+            volatility_score=score_breakdown['volatility_score'],
             # Quality indicators
             trends_aligned=trends_aligned,
             volume_price_sync=volume_price_sync,
@@ -661,8 +818,9 @@ class MomentumDetector:
             ]
         )
         
-        # Convert numeric columns
-        numeric_cols = ['open', 'high', 'low', 'close', 'volume', 'quote_volume']
+        # Convert numeric columns (including TBQR columns)
+        numeric_cols = ['open', 'high', 'low', 'close', 'volume', 'quote_volume',
+                        'taker_buy_base', 'taker_buy_quote']
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col])
         

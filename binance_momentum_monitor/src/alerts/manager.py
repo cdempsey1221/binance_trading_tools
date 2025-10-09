@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
-from .deduplication import AlertDeduplicationDB
+from .deduplication import AlertDeduplicationMySQL
 from .discord import DiscordNotifier
 from ..core.types import MomentumSignal
 from ..monitoring.logger import get_logger
@@ -21,7 +21,7 @@ class AlertManager:
     def __init__(
         self,
         discord_notifier: DiscordNotifier,
-        dedup_db: AlertDeduplicationDB,
+        dedup_db: AlertDeduplicationMySQL,
         cooldown_minutes: int
     ):
         """
@@ -113,25 +113,22 @@ class AlertManager:
     
     def _record_alert(self, signal: MomentumSignal) -> None:
         """
-        Record that an alert was sent
+        Record an alert by storing the full signal data in the database.
         
         Args:
-            signal: MomentumSignal that was alerted
+            signal: The MomentumSignal object that was alerted.
         """
-        # Create signature
-        signature = f"{signal.symbol}:{signal.timeframe}:{signal.candle_timestamp}"
+        # The new store_alert method takes the whole object and returns True if it's a new alert.
+        # The manual 'signature' is no longer needed.
+        is_new_alert = self.dedup_db.store_alert(signal)
         
-        # Store in database
-        self.dedup_db.store_alert(
-            symbol=signal.symbol,
-            timeframe=signal.timeframe,
-            bar_close_time=signal.candle_timestamp,
-            signature=signature
-        )
-        
-        # Update in-memory cache
-        key = f"{signal.symbol}:{signal.timeframe}"
-        self.last_alert_times[key] = datetime.now()
+        # Only update the in-memory cache if the alert was actually new and not a duplicate.
+        if is_new_alert:
+            key = f"{signal.symbol}:{signal.timeframe}"
+            self.last_alert_times[key] = datetime.now()
+            logger.info(f"New alert for {signal.symbol} stored and cache updated.")
+        else:
+            logger.debug(f"Duplicate alert for {signal.symbol} ignored.")
     
     def cleanup_old_alerts(self, days: int = 7) -> None:
         """

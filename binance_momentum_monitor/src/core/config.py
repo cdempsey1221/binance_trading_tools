@@ -58,6 +58,12 @@ class AlertsConfig:
 
 
 @dataclass
+class DatabaseConfig:
+    """Database configuration"""
+    url: str = ""
+
+
+@dataclass
 class MonitoringConfig:
     """Monitoring and logging configuration"""
     metrics_interval: int = 60
@@ -71,6 +77,7 @@ class Config:
     data: DataConfig = field(default_factory=DataConfig)
     signals: SignalsConfig = field(default_factory=SignalsConfig)
     alerts: AlertsConfig = field(default_factory=AlertsConfig)
+    database: DatabaseConfig = field(default_factory=DatabaseConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
 
     @classmethod
@@ -117,17 +124,21 @@ class Config:
                 rest=RestConfig(
                     rate_limit=int(os.getenv('REST_RATE_LIMIT', '1200'))
                 )
-            ),            signals=SignalsConfig(
+            ),
+            signals=SignalsConfig(
                 timeframe=os.getenv('TIMEFRAME', '15m'),
                 lookback_periods=int(os.getenv('LOOKBACK_PERIODS', '8')),
                 volume_window_hours=int(os.getenv('VOLUME_WINDOW_HOURS', '8')),
                 volume_spike_threshold=float(os.getenv('VOLUME_SPIKE_THRESHOLD', '150.0')),
                 price_change_threshold=float(os.getenv('PRICE_CHANGE_THRESHOLD', '0.05')),
                 use_atr_normalization=os.getenv('USE_ATR_NORMALIZATION', 'true').lower() == 'true'
-            ),
+            ),            
             alerts=AlertsConfig(
                 cooldown_minutes=int(os.getenv('ALERT_COOLDOWN', '30')),
                 discord_webhook_url=os.getenv('DISCORD_WEBHOOK_URL', '')
+            ),
+            database=DatabaseConfig(
+                url=os.getenv('DATABASE_URL', '')
             ),
             monitoring=MonitoringConfig(
                 metrics_interval=int(os.getenv('METRICS_INTERVAL', '60')),
@@ -203,6 +214,11 @@ class Config:
             discord_webhook_url=alerts_data.get('discord_webhook_url', '')
         )
         
+        database_data = data.get('database', {})
+        database = DatabaseConfig(
+            url=database_data.get('url', '')
+        )
+        
         monitoring_data = data.get('monitoring', {})
         monitoring = MonitoringConfig(
             metrics_interval=monitoring_data.get('metrics_interval', 60),
@@ -214,6 +230,7 @@ class Config:
             data=data_config,
             signals=signals,
             alerts=alerts,
+            database=database,
             monitoring=monitoring
         )
     
@@ -235,7 +252,6 @@ class Config:
         
         if self.alerts.cooldown_minutes < 0:
             raise ValueError("Alert cooldown must be non-negative")
-
 
 def load_config(config_path: Optional[str] = None) -> Config:
     """
