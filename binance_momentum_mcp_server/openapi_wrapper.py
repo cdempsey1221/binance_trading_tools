@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+"""
+OpenAPI Wrapper for MCP Server
+
+This FastAPI service wraps the MCP server tools as HTTP endpoints,
+allowing Open WebUI to call them via standard REST API.
+"""
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from typing import Optional
+import httpx
+from datetime import datetime
+import os
+
+app = FastAPI(
+    title="Momentum Signals API",
+    description="Search and analyze cryptocurrency momentum trading signals. Query real-time market data including volume spikes, price movements, and momentum scores for Bitcoin, Ethereum, and other trading pairs.",
+    version="0.1.0",
+    servers=[
+        {
+            "url": "http://momentum-mcp-server-openapi:8001",
+            "description": "Docker deployment"
+        }
+    ]
+)
+
+# Configuration
+API_BASE_URL = os.getenv("API_BASE_URL", "http://momentum-signals-api:8000")
+API_TIMEOUT = int(os.getenv("API_TIMEOUT", "30"))
+
+# HTTP client
+http_client = httpx.AsyncClient(
+    base_url=API_BASE_URL,
+    timeout=API_TIMEOUT,
+    follow_redirects=True
+)
+
+
+class SearchSignalsRequest(BaseModel):
+    """Request parameters for searching momentum signals. Results include score breakdowns: volume_score, price_score, trend_score, quality_score, volatility_score."""
+    symbol: Optional[str] = Field(None, description="Filter by trading pair symbol (e.g., 'BTCUSDT', 'ETHUSDT'). Leave empty to search all pairs.", examples=["BTCUSDT", "ETHUSDT"])
+    timeframe: Optional[str] = Field(None, description="Filter by detection timeframe (e.g., '15m', '1h', '4h'). This is the candle period the signal was detected on, not the price change period.", examples=["15m", "1h"])    
+    min_momentum_score: Optional[float] = Field(None, ge=0, le=10, description="Minimum momentum score from 0-10. Returns signals with score >= this value. Higher scores indicate stronger signals. Use integers: 7, 8, 9, or 10 for high-quality signals. Response includes volume_score, price_score, trend_score, quality_score breakdown.", examples=[7, 8, 9])
+    min_price_change_1h: Optional[float] = Field(None, description="Minimum 1-hour price change percentage. Use positive values for upward moves (e.g., 1.5 = +1.5%). Use to find significant short-term price moves.", examples=[1.0, 2.0])
+    min_price_change_4h: Optional[float] = Field(None, description="Minimum 4-hour price change percentage. Use positive values for upward moves (e.g., 2.0 = +2.0%). Use to find significant medium-term price moves.", examples=[2.0, 3.0])
+    min_current_price: Optional[float] = Field(None, description="Minimum current price in USD. Use this to filter out very cheap coins (e.g., 0.01 to exclude coins under $0.01) or focus on higher-priced assets (e.g., 1.0 for coins over $1).", examples=[0.01, 1.0, 10.0])
+    max_current_price: Optional[float] = Field(None, description="Maximum current price in USD. Use this to filter out expensive coins (e.g., 100 to exclude coins over $100) or focus on lower-priced assets (e.g., 1.0 for coins under $1).", examples=[1.0, 10.0, 100.0])
+    hours_ago: int = Field(24, ge=1, le=168, description="Only return signals from the last N hours. Default is 24 hours (last day).", examples=[1, 24, 48])
+    sort_by: str = Field("timestamp_desc", description="Sort order: 'momentum_desc' (highest score first), 'timestamp_desc' (most recent first), 'volume_desc', or 'price_desc'", examples=["momentum_desc", "timestamp_desc"])
+    limit: int = Field(20, ge=1, le=100, description="Maximum number of results to return. Default 20, max 100.", examples=[5, 10, 20])
+
+class HighScoresRequest(BaseModel):
+    """Request parameters for getting top-scoring signals"""
+    limit: int = Field(10, ge=1, le=50, description="Number of top signals to return. Gets the highest-scoring signals from the last hour. Default 10, max 50.", examples=[5, 10, 20])
+
+@app.get("/")
+async def root():
+    """API information"""
+    return {
+        "name": "Momentum Signals MCP API",
+        "version": "0.1.0",
+        "description": "OpenAPI wrapper for MCP tools",
+        "endpoints": {
+            "/search": "Search momentum signals with filters",
+            "/signal/{id}": "Get signal by ID",
+            "/symbols": "List monitored trading pairs",
+            "/top-signals": "Get recent high-scoring signals"
+        }
+    }
+
+
+@app.get("/openapi.json")
+async def get_openapi_spec():
+    """Return OpenAPI specification"""
+    return app.openapi()
+
+
+@app.post("/search",
+    summary="Search Momentum Signals",
+    description="""Search for cryptocurrency momentum trading signals with filters for symbol, timeframe, score, and time range. 
+    
+    Example queries:
+    - Find signals with momentum_score >= 8 from last 4 hours
+    - Find BTCUSDT signals with price_change_4hour > 2%
+    - Get top 10 signals sorted by momentum_score
+    
+    Returns: Full signal details including volume_score, price_score, trend_score, quality_score, volatility_score breakdown.""",
+    response_description="List of matching momentum signals with detailed metrics including score breakdowns",
+    tags=["Signals"],
+    responses={
+        200: {"description": "Successful search, returns list of signals"},
+        422: {"description": "Invalid parameters - check that limit is a valid integer between 1-100, hours_ago is 1-168, etc."}
+    }
+)
+async def search_signals(request: SearchSignalsRequest):
+    """
+    Search momentum signals with optional filters.
+    Returns signals sorted by your chosen criteria.
+    """
+    try:
+        # Build query parameters
+        params = {}
+        
+        # Time filter
+        import time
+        cutoff_timestamp = int((time.time() - (request.hours_ago * 3600)) * 1000)
+        params["after_ts"] = cutoff_timestamp
+        
+        if request.symbol:
+            params["symbol"] = request.symbol.upper()
+        
+        if request.timeframe:
+            params["timeframe"] = request.timeframe
+        
+        # Price filters (pass to API now that it supports them!)
+        if request.min_current_price is not None:
+            params["min_price"] = request.min_current_price
+        
+        if request.max_current_price is not None:
+            params["max_price"] = request.max_current_price
+        
+        # Sort mapping
+        sort_map = {
+            "momentum_desc": "momentum_desc",
+            "timestamp_desc": "ts_desc",
+            "volume_desc": "ts_desc",
+            "price_desc": "ts_desc"
+        }
+        params["sort"] = sort_map.get(request.sort_by, "ts_desc")
+        params["limit"] = request.limit
+        
+        # Call API
+        response = await http_client.get("/alerts/search", params=params)
+        response.raise_for_status()
+        data = response.json()
+        signals = data.get("items", [])
+        
+        # Apply momentum score filter (convert to int for comparison with database scores)
+        if request.min_momentum_score is not None:
+            min_score = int(request.min_momentum_score)
+            signals = [s for s in signals if s.get("momentum_score", 0) >= min_score]
+        
+        # Apply price change filters (NEW!)
+        if request.min_price_change_1h is not None:
+            signals = [s for s in signals if s.get("price_change_1hour", 0) >= request.min_price_change_1h]
+        
+        if request.min_price_change_4h is not None:
+            signals = [s for s in signals if s.get("price_change_4hour", 0) >= request.min_price_change_4h]
+        
+        # Client-side sorting for volume/price
+        if request.sort_by == "volume_desc":
+            signals.sort(key=lambda s: s.get("volume_spike_pct", 0), reverse=True)
+        elif request.sort_by == "price_desc":
+            signals.sort(key=lambda s: s.get("price_change_pct", 0), reverse=True)
+        
+        signals = signals[:request.limit]
+        
+        return {
+            "count": len(signals),
+            "timeframe_hours": request.hours_ago,
+            "signals": signals
+        }
+        
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+
+
+@app.get("/signal/{signal_id}",
+    summary="Get Signal by ID",
+    description="Retrieve detailed information about a specific momentum signal including price analysis, volume metrics, and quality indicators.",
+    response_description="Detailed signal information",
+    tags=["Signals"]
+)
+async def get_signal(signal_id: int):
+    """
+    Get detailed information about a specific momentum signal by its ID.
+    """
+    try:
+        response = await http_client.get(f"/alerts/{signal_id}")
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"Signal ID {signal_id} not found")
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+
+
+@app.get("/symbols",
+    summary="List Trading Pairs",
+    description="Get a list of all cryptocurrency trading pairs currently being monitored for momentum signals (e.g., BTCUSDT, ETHUSDT).",
+    response_description="Array of trading pair symbols",
+    tags=["Reference"]
+)
+async def list_symbols():
+    """
+    List all cryptocurrency trading pairs currently being monitored.
+    """
+    try:
+        response = await http_client.get("/symbols")
+        response.raise_for_status()
+        symbols = response.json()
+        return {
+            "count": len(symbols),
+            "symbols": symbols
+        }
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+
+
+@app.post("/top-signals",
+    summary="Get Top Signals",
+    description="Get the highest-scoring momentum signals from the last hour. Use this to quickly find the strongest current trading opportunities.",
+    response_description="Top-ranked momentum signals",
+    tags=["Signals"]
+)
+async def get_top_signals(request: HighScoresRequest):
+    """
+    Get the highest-scoring momentum signals from the last hour.
+    Perfect for finding the strongest current trading opportunities.
+    """
+    try:
+        import time
+        cutoff_timestamp = int((time.time() - 3600) * 1000)
+        
+        response = await http_client.get("/alerts/search", params={
+            "after_ts": cutoff_timestamp,
+            "sort": "momentum_desc",
+            "limit": request.limit
+        })
+        response.raise_for_status()
+        data = response.json()
+        
+        return {
+            "count": len(data.get("items", [])),
+            "signals": data.get("items", [])
+        }
+        
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+
+
+@app.get("/healthz")
+async def health_check():
+    """Health check endpoint"""
+    try:
+        # Test connection to underlying API
+        response = await http_client.get("/healthz")
+        response.raise_for_status()
+        return {
+            "status": "healthy",
+            "api_connection": "ok",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "api_connection": "failed",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)

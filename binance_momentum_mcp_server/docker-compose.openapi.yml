@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  momentum-mcp-openapi:
+    build:
+      context: .
+      dockerfile: Dockerfile.openapi
+    container_name: momentum-mcp-server-openapi
+    image: cdempsey1221/momentum-mcp-server-openapi:0.1.0
+    restart: unless-stopped
+    environment:
+      - API_BASE_URL=http://momentum-signals-api:8000
+      - API_TIMEOUT=30
+    ports:
+      - "8001:8001"
+    networks:
+      - azerothcore-wotlk_ac-network    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  azerothcore-wotlk_ac-network:
+    external: true

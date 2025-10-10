@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  momentum-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: momentum-mcp-server
+    image: cdempsey1221/momentum-mcp-server:0.1.0
+    restart: unless-stopped
+    environment:
+      - API_BASE_URL=http://momentum-signals-api:8000
+      - API_TIMEOUT=30
+    networks:
+      - azerothcore-wotlk_ac-network
+    # MCP servers typically run via stdio invoked by the client (Open WebUI)
+    # This service can be used for testing or if Open WebUI needs a persistent container
+    stdin_open: true
+    tty: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  azerothcore-wotlk_ac-network:
+    external: true
