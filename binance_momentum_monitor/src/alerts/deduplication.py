@@ -92,14 +92,14 @@ class AlertDeduplicationMySQL:
     def close(self):
         """Closes the database connection."""
         if self.conn and self.conn.open:
-            self.conn.close()
-
+            self.conn.close()    
+    
     def __enter__(self):
         return self.connect()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-
+    
     def _init_db(self):
         """Creates the expanded alerts table if it doesn't exist."""
         create_table_sql = """
@@ -114,7 +114,12 @@ class AlertDeduplicationMySQL:
             volume_score FLOAT, price_score FLOAT, trend_score FLOAT,
             quality_score FLOAT, volatility_score FLOAT, volume_zscore FLOAT NULL,
             signal_strength FLOAT NULL, atr_normalized_return FLOAT NULL,
-            volume_spike_threshold FLOAT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            volume_spike_threshold FLOAT NULL,
+            ema_21_daily DECIMAL(20, 8) NULL,
+            ema_50_daily DECIMAL(20, 8) NULL,
+            price_vs_ema_21 VARCHAR(20) NULL,
+            ema_trend_bias VARCHAR(20) DEFAULT 'neutral',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(symbol, timeframe, candle_timestamp)
         );"""
         with self.conn.cursor() as cursor:
@@ -126,7 +131,6 @@ class AlertDeduplicationMySQL:
         Stores a full MomentumSignal object. Returns True if new, False if duplicate.
         """
         self._ensure_connection()  # Ensure connection is active
-        
         sql = """
             INSERT INTO alerts (
                 symbol, candle_timestamp, timeframe, volume_spike_pct, volume_building,
@@ -135,9 +139,10 @@ class AlertDeduplicationMySQL:
                 momentum_score, momentum_stage, trends_aligned, volume_price_sync,
                 volatility, current_price, volume_score, price_score, trend_score,
                 quality_score, volatility_score, volume_zscore, signal_strength,
-                atr_normalized_return, volume_spike_threshold
+                atr_normalized_return, volume_spike_threshold,
+                ema_21_daily, ema_50_daily, price_vs_ema_21, ema_trend_bias
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         params = (
             signal.symbol, signal.candle_timestamp, signal.timeframe,
@@ -149,7 +154,8 @@ class AlertDeduplicationMySQL:
             signal.volume_score, signal.price_score, signal.trend_score,
             signal.quality_score, signal.volatility_score, signal.volume_zscore,
             signal.signal_strength, signal.atr_normalized_return,
-            signal.volume_spike_threshold
+            signal.volume_spike_threshold,
+            signal.ema_21_daily, signal.ema_50_daily, signal.price_vs_ema_21, signal.ema_trend_bias
         )
         
         try:

@@ -36,12 +36,17 @@ CREATE TABLE IF NOT EXISTS alerts (
     trend_score FLOAT,
     quality_score FLOAT,
     volatility_score FLOAT,
-    
-    -- Optional fields (allow NULL)
+      -- Optional fields (allow NULL)
     volume_zscore FLOAT NULL,
     signal_strength FLOAT NULL,
     atr_normalized_return FLOAT NULL,
     volume_spike_threshold FLOAT NULL,
+    
+    -- EMA trend analysis (Stage 1: data collection)
+    ema_21_daily DECIMAL(20, 8) NULL COMMENT '21-period EMA from daily timeframe',
+    ema_50_daily DECIMAL(20, 8) NULL COMMENT '50-period EMA from daily timeframe',
+    price_vs_ema_21 VARCHAR(20) NULL COMMENT 'Price position: above, below, at, or unknown',
+    ema_trend_bias VARCHAR(20) DEFAULT 'neutral' COMMENT 'Trend bias: bullish, bearish, or neutral',
     
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -49,3 +54,10 @@ CREATE TABLE IF NOT EXISTS alerts (
     -- Ensure each alert is unique per candle
     UNIQUE(symbol, timeframe, candle_timestamp)
 );
+
+-- Indexes for efficient querying
+CREATE INDEX idx_alerts_symbol ON alerts(symbol);
+CREATE INDEX idx_alerts_created_at ON alerts(created_at);
+CREATE INDEX idx_alerts_momentum_score ON alerts(momentum_score);
+CREATE INDEX idx_alerts_ema_bias ON alerts(ema_trend_bias);
+CREATE INDEX idx_alerts_price_vs_ema ON alerts(price_vs_ema_21);

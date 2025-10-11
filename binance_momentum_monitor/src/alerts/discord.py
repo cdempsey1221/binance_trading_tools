@@ -137,6 +137,34 @@ class DiscordNotifier:
         if signal.volatility is not None:
             message += f"Volatility (ATR): {signal.volatility:.2f}%\n"
         
+        # EMA trend analysis (Stage 1: data collection)
+        if signal.ema_21_daily is not None:
+            message += "\n**🎯 EMA TREND (Daily)**\n"
+            
+            # EMA values
+            message += f"21 EMA: ${signal.ema_21_daily:.6f}\n"
+            if signal.ema_50_daily is not None:
+                message += f"50 EMA: ${signal.ema_50_daily:.6f}\n"
+            
+            # Price position and trend bias
+            if signal.price_vs_ema_21:
+                position_emoji = "🟢" if signal.price_vs_ema_21 == "above" else "🔴" if signal.price_vs_ema_21 == "below" else "⚪"
+                position_text = signal.price_vs_ema_21.upper()
+                message += f"Position: {position_emoji} **{position_text}** 21 EMA\n"
+            
+            if signal.ema_trend_bias and signal.ema_trend_bias != "neutral":
+                bias_emoji = "📈" if signal.ema_trend_bias == "bullish" else "📉" if signal.ema_trend_bias == "bearish" else "➡️"
+                bias_text = signal.ema_trend_bias.upper()
+                message += f"Bias: {bias_emoji} **{bias_text}**"
+                
+                # Add percentage distance from EMA
+                if signal.current_price and signal.ema_21_daily:
+                    distance_pct = ((signal.current_price - signal.ema_21_daily) / signal.ema_21_daily) * 100
+                    sign = "+" if distance_pct > 0 else ""
+                    message += f" ({sign}{distance_pct:.2f}% from EMA)"
+                
+                message += "\n"
+        
         # Timeframe footer
         message += f"\n⏰ Timeframe: **{signal.timeframe}**"
         

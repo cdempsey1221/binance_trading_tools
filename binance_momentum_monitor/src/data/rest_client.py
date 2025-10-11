@@ -31,6 +31,10 @@ class BinanceRestClient:
         self.session = requests.Session()
         self.request_times: List[float] = []
         self.lock = Lock()
+        
+        # EMA calculation cache (23-hour TTL)
+        self.daily_klines_cache: Dict[str, dict] = {}
+        self.cache_ttl_hours = 23
     
     def _check_rate_limit(self) -> None:
         """Check and enforce rate limiting"""
@@ -241,3 +245,66 @@ class BinanceRestClient:
     def close(self) -> None:
         """Close the session"""
         self.session.close()
+    
+    def get_cached_daily_klines(
+        self,
+        symbol: str,
+        limit: int = 22
+    ) -> Optional[List[List]]:
+        """
+        Fetch daily klines with 23-hour caching for EMA calculation.
+        
+        This method caches daily candles to minimize API calls since:
+        - Daily candles only close once per 24 hours
+        - Cache is valid until just before next daily candle closes
+        - Reduces API usage by ~50% for EMA calculations
+        
+        Args:
+            symbol: Trading pair symbol (e.g., 'BTCUSDT')
+            limit: Number of daily candles to fetch (default 22 for 21 EMA + current)
+            
+        Returns:
+            List of daily kline data or None on error
+        """
+        now = time.time()
+        
+        # Check cache for valid entry
+        if symbol in self.daily_klines_cache:
+            cache_entry = self.daily_klines_cache[symbol]
+            age_hours = (now - cache_entry['timestamp']) / 3600
+            
+            if age_hours < self.cache_ttl_hours:
+                logger.debug(
+                    'daily_cache_hit',
+                    f'Using cached daily klines for {symbol}',
+                    data={
+                        'symbol': symbol,
+                        'cache_age_hours': round(age_hours, 2)
+                    }
+                )
+                return cache_entry['data']
+        
+        # Cache miss or expired - fetch fresh data
+        logger.debug(
+            'daily_cache_miss',
+            f'Fetching daily klines for {symbol}',
+            data={'symbol': symbol}
+        )
+        
+        klines = self.get_klines(symbol, '1d', limit)
+        
+        if klines:
+            self.daily_klines_cache[symbol] = {
+                'data': klines,
+                'timestamp': now
+            }
+            logger.debug(
+                'daily_cache_stored',
+                f'Cached {len(klines)} daily klines for {symbol}',
+                data={
+                    'symbol': symbol,
+                    'candles': len(klines)
+                }
+            )
+        
+        return klines

@@ -61,6 +61,12 @@ class MomentumSignal:
     quality_score: float
     volatility_score: float
     
+    # EMA trend analysis (optional - Stage 1: data collection only)
+    ema_21_daily: Optional[float] = None
+    ema_50_daily: Optional[float] = None
+    price_vs_ema_21: Optional[str] = None  # 'above', 'below', or 'unknown'
+    ema_trend_bias: str = 'neutral'  # 'bullish', 'bearish', or 'neutral'
+    
     # Optional fields (all fields with defaults must come last)
     volume_zscore: Optional[float] = None
     signal_strength: Optional[float] = None  # 0-10 scale

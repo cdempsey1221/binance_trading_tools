@@ -1,4 +1,3 @@
-
 """
 Momentum signal detection
 """
@@ -66,6 +65,12 @@ class MomentumDetector:
         df = self._get_market_data(symbol)
         if df is None:
             return None
+        
+        # Get current price for EMA analysis
+        current_price = float(df['close'].iloc[-1])
+        
+        # Stage 1: Calculate EMA trend early (for all symbols, not just signals)
+        ema_analysis = self._analyze_ema_trend(symbol, current_price)
         
         # Analyze momentum components
         volume_analysis = self._analyze_volume_pattern(df)
@@ -148,9 +153,10 @@ class MomentumDetector:
                     price_analysis,
                     volatility,
                     momentum_score,
-                    score_breakdown,  # Pass the score breakdown
+                    score_breakdown,
                     acceleration,
-                    stage
+                    stage,
+                    ema_analysis
                 )
         
         logger.debug(
@@ -696,13 +702,13 @@ class MomentumDetector:
                 'momentum_score': score,                'current_volume': volume_analysis['current'],
                 'recent_avg_volume': volume_analysis['recent_avg']
             }
-        )    
-    
+        )
+     
     def _create_momentum_signal(self, symbol: str, df: pd.DataFrame,
                             volume_analysis: dict, price_analysis: dict,
                             volatility: float, momentum_score: int,
                             score_breakdown: dict, acceleration: float, 
-                            stage: str) -> MomentumSignal:
+                            stage: str, ema_analysis: Optional[dict] = None) -> MomentumSignal:
         """
         Create comprehensive momentum signal object with all analysis data
         
@@ -716,6 +722,7 @@ class MomentumDetector:
             score_breakdown: Dictionary with individual score components
             acceleration: Price acceleration metric
             stage: Momentum stage (early/developing/mature/none)
+            ema_analysis: Pre-calculated EMA analysis (optional)
             
         Returns:
             MomentumSignal object with comprehensive data
@@ -757,7 +764,8 @@ class MomentumDetector:
                 'price_change_3bars': price_analysis['change_3bars'],
                 'current_bar_change': price_analysis['current_bar'],
                 'timeframe': self.timeframe,
-                'trends_aligned': trends_aligned
+                'trends_aligned': trends_aligned,
+                'ema_trend_bias': ema_analysis['trend_bias'] if ema_analysis else 'unknown'
             }
         )
         
@@ -790,7 +798,12 @@ class MomentumDetector:
             trends_aligned=trends_aligned,
             volume_price_sync=volume_price_sync,
             volatility=volatility,
-            current_price=current_price
+            current_price=current_price,
+            # EMA trend data (Stage 1: collection only)
+            ema_21_daily=ema_analysis['ema_21'] if ema_analysis else None,
+            ema_50_daily=ema_analysis['ema_50'] if ema_analysis else None,
+            price_vs_ema_21=ema_analysis['price_vs_ema_21'] if ema_analysis else 'unknown',
+            ema_trend_bias=ema_analysis['trend_bias'] if ema_analysis else 'neutral'
         )
     
     def get_kline_dataframe(self, symbol: str, limit: int) -> Optional[pd.DataFrame]:
@@ -825,3 +838,117 @@ class MomentumDetector:
             df[col] = pd.to_numeric(df[col])
         
         return df
+    
+    def _calculate_ema_from_klines(self, klines: list, period: int) -> float:
+        """
+        Calculate Exponential Moving Average from kline data.
+        
+        Args:
+            klines: List of kline arrays [timestamp, open, high, low, close, ...]
+            period: EMA period (e.g., 21)
+            
+        Returns:
+            EMA value as float
+        """
+        if not klines or len(klines) < period:
+            logger.warning(
+                'insufficient_klines_for_ema',
+                f'Not enough klines for {period}-period EMA',
+                data={'received': len(klines) if klines else 0, 'required': period}
+            )
+            return 0.0
+        
+        # Extract close prices (index 4 in kline array)
+        closes = [float(k[4]) for k in klines]
+        
+        # Calculate EMA using pandas
+        df = pd.DataFrame({'close': closes})
+        ema_value = df['close'].ewm(span=period, adjust=False).mean().iloc[-1]
+        
+        return float(ema_value)
+    
+    def _analyze_ema_trend(self, symbol: str, current_price: float) -> Optional[dict]:
+        """
+        Analyze EMA trend bias using cached daily kline data.
+        
+        This method:
+        1. Fetches daily klines (with 23-hour caching for efficiency)
+        2. Calculates 21 and 50 period EMAs
+        3. Determines if price is above/below 21 EMA
+        4. Returns trend bias (bullish/bearish/neutral)
+        
+        Stage 1: Data collection only - no filtering applied yet
+        
+        Args:
+            symbol: Trading pair symbol
+            current_price: Current price of the asset
+            
+        Returns:
+            Dict with ema_21, ema_50, price_vs_ema_21, trend_bias or None on error
+        """
+        try:
+            # Fetch daily klines (uses cache if available)
+            klines_daily = self.rest_client.get_cached_daily_klines(symbol, limit=50)
+            
+            if not klines_daily:
+                logger.warning(
+                    'no_daily_klines',
+                    f'No daily kline data available for {symbol}',
+                    data={'symbol': symbol}
+                )
+                return None
+            
+            if len(klines_daily) < 21:
+                logger.warning(
+                    'insufficient_daily_data',
+                    f'Not enough daily data for {symbol}',
+                    data={'symbol': symbol, 'candles': len(klines_daily)}
+                )
+                return None
+            
+            # Calculate 21 EMA (always)
+            ema_21 = self._calculate_ema_from_klines(klines_daily, 21)
+            
+            # Calculate 50 EMA (if enough data)
+            ema_50 = None
+            if len(klines_daily) >= 50:
+                ema_50 = self._calculate_ema_from_klines(klines_daily, 50)
+            
+            # Determine price position relative to 21 EMA
+            if current_price > ema_21:
+                price_vs_ema = 'above'
+                trend_bias = 'bullish'
+            elif current_price < ema_21:
+                price_vs_ema = 'below'
+                trend_bias = 'bearish'
+            else:
+                price_vs_ema = 'at'
+                trend_bias = 'neutral'
+            
+            logger.debug(
+                'ema_calculated',
+                f'{symbol}: Price ${current_price:.4f} vs 21 EMA ${ema_21:.4f} ({trend_bias})',
+                data={
+                    'symbol': symbol,
+                    'current_price': current_price,
+                    'ema_21': ema_21,
+                    'ema_50': ema_50,
+                    'price_vs_ema_21': price_vs_ema,
+                    'trend_bias': trend_bias
+                }
+            )
+            
+            return {
+                'ema_21': ema_21,
+                'ema_50': ema_50,
+                'price_vs_ema_21': price_vs_ema,
+                'trend_bias': trend_bias
+            }
+            
+        except Exception as e:
+            logger.error(
+                'ema_analysis_error',
+                f'Error analyzing EMA trend for {symbol}',
+                data={'symbol': symbol, 'error': str(e)}
+            )
+            return None
