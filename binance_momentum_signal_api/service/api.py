@@ -45,6 +45,10 @@ def search_alerts(
     min_signal: Optional[float] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
+    price_vs_ema_21: Optional[Literal["above", "below", "at"]] = None,
+    ema_trend_bias: Optional[Literal["bullish", "bearish", "neutral"]] = None,
+    min_tbqr: Optional[float] = Query(None, ge=0, le=1, description="Minimum TBQR (0-1, >0.5 = bullish buying pressure)"),
+    min_tbqr_zscore: Optional[float] = Query(None, description="Minimum TBQR Z-score (statistical significance)"),
     sort: Literal["ts_desc","signal_desc","momentum_desc","created_desc"] = "ts_desc",
     limit: int = Query(50, ge=1, le=500),
     cursor: Optional[int] = None,
@@ -56,6 +60,10 @@ def search_alerts(
     if min_signal is not None: where += ["signal_strength >= :min_signal"]; params["min_signal"]=min_signal
     if min_price is not None: where += ["current_price >= :min_price"]; params["min_price"]=min_price
     if max_price is not None: where += ["current_price <= :max_price"]; params["max_price"]=max_price
+    if price_vs_ema_21: where += ["price_vs_ema_21=:price_vs_ema"]; params["price_vs_ema"]=price_vs_ema_21
+    if ema_trend_bias: where += ["ema_trend_bias=:ema_bias"]; params["ema_bias"]=ema_trend_bias
+    if min_tbqr is not None: where += ["tbqr_current >= :min_tbqr"]; params["min_tbqr"]=min_tbqr
+    if min_tbqr_zscore is not None: where += ["tbqr_zscore >= :min_tbqr_zscore"]; params["min_tbqr_zscore"]=min_tbqr_zscore
     if cursor: where += ["id < :cursor"]; params["cursor"]=cursor
 
     order = {

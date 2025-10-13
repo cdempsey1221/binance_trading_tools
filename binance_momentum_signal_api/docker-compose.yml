@@ -7,11 +7,12 @@ services:
       dockerfile: Dockerfile
     container_name: momentum-signals-api
     image: cdempsey1221/momentum-signals-api:0.1.0
-    restart: unless-stopped
+    restart: unless-stopped    
     ports:
       - "${API_PORT:-8000}:8000"
     environment:
-      - MYSQL_DSN=${MYSQL_DSN}    networks:
+      - MYSQL_DSN=${MYSQL_DSN}
+    networks:
       - azerothcore-wotlk_ac-network
     logging:
       driver: "json-file"

@@ -60,12 +60,17 @@ class MomentumSignal:
     trend_score: float
     quality_score: float
     volatility_score: float
-    
     # EMA trend analysis (optional - Stage 1: data collection only)
     ema_21_daily: Optional[float] = None
     ema_50_daily: Optional[float] = None
     price_vs_ema_21: Optional[str] = None  # 'above', 'below', or 'unknown'
     ema_trend_bias: str = 'neutral'  # 'bullish', 'bearish', or 'neutral'
+    
+    # TBQR (Taker Buy Quote Ratio) - Buying pressure analysis (optional - data collection)
+    tbqr_current: Optional[float] = None  # Current bar's buy/sell ratio (0-1, >0.5 = bullish)
+    tbqr_zscore: Optional[float] = None  # Statistical significance vs 20-bar average
+    tbqr_delta: Optional[float] = None  # Change from 3-bar average (acceleration)
+    quote_volume_zscore: Optional[float] = None  # USD participation level
     
     # Optional fields (all fields with defaults must come last)
     volume_zscore: Optional[float] = None

@@ -73,7 +73,7 @@ class MomentumDetector:
         ema_analysis = self._analyze_ema_trend(symbol, current_price)
         
         # Analyze momentum components
-        volume_analysis = self._analyze_volume_pattern(df)
+        volume_analysis = self._analyze_volume_pattern(df, symbol)
         price_analysis = self._analyze_price_momentum(df)
         volatility = self._calculate_volatility(df)
         
@@ -140,7 +140,8 @@ class MomentumDetector:
                     'change_2h': change_2h,
                     'change_4h': change_4h,
                     'reason': 'trend_conflict'
-                }            )
+                }            
+            )
             return None
         
         if momentum_score >= signal_threshold:
@@ -275,7 +276,7 @@ class MomentumDetector:
         else:
             return 'neutral'
 
-    def _analyze_volume_pattern(self, df: pd.DataFrame) -> dict:
+    def _analyze_volume_pattern(self, df: pd.DataFrame, symbol: str) -> dict:
         """
         Analyze volume patterns for momentum detection
         
@@ -284,6 +285,7 @@ class MomentumDetector:
         
         Args:
             df: DataFrame with market data
+            Symbol: current symbol being analyzed
             
         Returns:
             Dictionary with volume analysis results including TBQR metrics
@@ -356,7 +358,7 @@ class MomentumDetector:
         
         logger.debug(
             'volume_analysis_complete',
-            f'Volume and TBQR metrics calculated',
+            f'Volume and TBQR metrics calculated for {symbol}',
             data={
                 'volume_spike_pct': volume_spike_pct,
                 'volume_building': volume_building,
@@ -697,9 +699,10 @@ class MomentumDetector:
                 'price_change_2hour': price_analysis.get('change_2hour', 0),
                 'price_change_4hour': price_analysis.get('change_4hour', 0),
                 'price_trending_up': bool(price_analysis['trending_up']),
-                'price_acceleration': acceleration,  # NEW
+                'price_acceleration': acceleration,
                 'avg_volatility': volatility,
-                'momentum_score': score,                'current_volume': volume_analysis['current'],
+                'momentum_score': score,
+                'current_volume': volume_analysis['current'],
                 'recent_avg_volume': volume_analysis['recent_avg']
             }
         )
@@ -797,13 +800,17 @@ class MomentumDetector:
             # Quality indicators
             trends_aligned=trends_aligned,
             volume_price_sync=volume_price_sync,
-            volatility=volatility,
-            current_price=current_price,
+            volatility=volatility,            current_price=current_price,
             # EMA trend data (Stage 1: collection only)
             ema_21_daily=ema_analysis['ema_21'] if ema_analysis else None,
             ema_50_daily=ema_analysis['ema_50'] if ema_analysis else None,
             price_vs_ema_21=ema_analysis['price_vs_ema_21'] if ema_analysis else 'unknown',
-            ema_trend_bias=ema_analysis['trend_bias'] if ema_analysis else 'neutral'
+            ema_trend_bias=ema_analysis['trend_bias'] if ema_analysis else 'neutral',
+            # TBQR buying pressure data (data collection)
+            tbqr_current=volume_analysis.get('tbqr_current'),
+            tbqr_zscore=volume_analysis.get('tbqr_zscore'),
+            tbqr_delta=volume_analysis.get('tbqr_delta'),
+            quote_volume_zscore=volume_analysis.get('quote_volume_zscore')
         )
     
     def get_kline_dataframe(self, symbol: str, limit: int) -> Optional[pd.DataFrame]:

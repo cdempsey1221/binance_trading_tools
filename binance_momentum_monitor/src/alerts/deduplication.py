@@ -119,6 +119,10 @@ class AlertDeduplicationMySQL:
             ema_50_daily DECIMAL(20, 8) NULL,
             price_vs_ema_21 VARCHAR(20) NULL,
             ema_trend_bias VARCHAR(20) DEFAULT 'neutral',
+            tbqr_current DECIMAL(10, 6) NULL,
+            tbqr_zscore DECIMAL(10, 4) NULL,
+            tbqr_delta DECIMAL(10, 6) NULL,
+            quote_volume_zscore DECIMAL(10, 4) NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(symbol, timeframe, candle_timestamp)
         );"""
@@ -140,9 +144,10 @@ class AlertDeduplicationMySQL:
                 volatility, current_price, volume_score, price_score, trend_score,
                 quality_score, volatility_score, volume_zscore, signal_strength,
                 atr_normalized_return, volume_spike_threshold,
-                ema_21_daily, ema_50_daily, price_vs_ema_21, ema_trend_bias
+                ema_21_daily, ema_50_daily, price_vs_ema_21, ema_trend_bias,
+                tbqr_current, tbqr_zscore, tbqr_delta, quote_volume_zscore
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         params = (
             signal.symbol, signal.candle_timestamp, signal.timeframe,
@@ -155,7 +160,8 @@ class AlertDeduplicationMySQL:
             signal.quality_score, signal.volatility_score, signal.volume_zscore,
             signal.signal_strength, signal.atr_normalized_return,
             signal.volume_spike_threshold,
-            signal.ema_21_daily, signal.ema_50_daily, signal.price_vs_ema_21, signal.ema_trend_bias
+            signal.ema_21_daily, signal.ema_50_daily, signal.price_vs_ema_21, signal.ema_trend_bias,
+            signal.tbqr_current, signal.tbqr_zscore, signal.tbqr_delta, signal.quote_volume_zscore
         )
         
         try:

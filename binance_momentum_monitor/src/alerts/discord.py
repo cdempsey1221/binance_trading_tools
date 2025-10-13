@@ -123,6 +123,47 @@ class DiscordNotifier:
         if signal.volume_zscore is not None:
             message += f"Volume Z-Score: {signal.volume_zscore:.2f}σ\n"
         
+        # TBQR buying pressure analysis
+        if signal.tbqr_current is not None:
+            tbqr_pct = signal.tbqr_current * 100
+            
+            # Determine buying pressure interpretation with emoji
+            if signal.tbqr_current > 0.60:
+                pressure_emoji = "🟢🟢"
+                pressure_label = "Very Strong"
+            elif signal.tbqr_current > 0.55:
+                pressure_emoji = "🟢"
+                pressure_label = "Strong"
+            elif signal.tbqr_current > 0.50:
+                pressure_emoji = "🔵"
+                pressure_label = "Moderate"
+            elif signal.tbqr_current > 0.45:
+                pressure_emoji = "🟡"
+                pressure_label = "Weak"
+            else:
+                pressure_emoji = "🔴"
+                pressure_label = "Bearish"
+            
+            message += f"Buy Pressure (TQBR): {pressure_emoji} **{pressure_label}** ({tbqr_pct:.1f}%)\n"
+            
+            # Add Z-score if available (statistical significance)
+            if signal.tbqr_zscore is not None:
+                if signal.tbqr_zscore > 2.0:
+                    zscore_note = "⚡ Highly significant"
+                elif signal.tbqr_zscore > 1.0:
+                    zscore_note = "Notable"
+                elif signal.tbqr_zscore < -1.0:
+                    zscore_note = "Below average"
+                else:
+                    zscore_note = "Normal"
+                message += f"  └─ Significance: {signal.tbqr_zscore:.1f}σ ({zscore_note})\n"
+            
+            # Add delta/acceleration if available
+            if signal.tbqr_delta is not None and abs(signal.tbqr_delta) > 0.02:
+                delta_sign = "+" if signal.tbqr_delta > 0 else ""
+                accel_emoji = "📈" if signal.tbqr_delta > 0 else "📉"
+                message += f"  └─ Acceleration: {accel_emoji} {delta_sign}{signal.tbqr_delta:.3f}\n"
+        
         # Signal quality indicators
         message += "\n**✨ SIGNAL QUALITY**\n"
         
@@ -167,6 +208,7 @@ class DiscordNotifier:
         
         # Timeframe footer
         message += f"\n⏰ Timeframe: **{signal.timeframe}**"
+        message += f"───────────────────────────\n\n"
         
         # Add optional legacy enrichment data
         if signal.atr_normalized_return is not None:

@@ -41,12 +41,17 @@ CREATE TABLE IF NOT EXISTS alerts (
     signal_strength FLOAT NULL,
     atr_normalized_return FLOAT NULL,
     volume_spike_threshold FLOAT NULL,
-    
     -- EMA trend analysis (Stage 1: data collection)
     ema_21_daily DECIMAL(20, 8) NULL COMMENT '21-period EMA from daily timeframe',
     ema_50_daily DECIMAL(20, 8) NULL COMMENT '50-period EMA from daily timeframe',
     price_vs_ema_21 VARCHAR(20) NULL COMMENT 'Price position: above, below, at, or unknown',
     ema_trend_bias VARCHAR(20) DEFAULT 'neutral' COMMENT 'Trend bias: bullish, bearish, or neutral',
+    
+    -- TBQR (Taker Buy Quote Ratio) - Buying pressure analysis (data collection)
+    tbqr_current DECIMAL(10, 6) NULL COMMENT 'Current bar buy/sell ratio (0-1, >0.5 = bullish)',
+    tbqr_zscore DECIMAL(10, 4) NULL COMMENT 'TBQR statistical significance vs 20-bar average',
+    tbqr_delta DECIMAL(10, 6) NULL COMMENT 'TBQR change from 3-bar average (acceleration)',
+    quote_volume_zscore DECIMAL(10, 4) NULL COMMENT 'USD participation level (quote volume z-score)',
     
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

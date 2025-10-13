@@ -36,6 +36,14 @@ class MomentumSignalModel(BaseModel):
     signal_strength: float | None = None
     atr_normalized_return: float | None = None
     volume_spike_threshold: float | None = None
+    ema_21_daily: Decimal | float | None = None
+    ema_50_daily: Decimal | float | None = None
+    price_vs_ema_21: str | None = None
+    ema_trend_bias: str | None = None
+    tbqr_current: Decimal | float | None = None
+    tbqr_zscore: Decimal | float | None = None
+    tbqr_delta: Decimal | float | None = None
+    quote_volume_zscore: Decimal | float | None = None
     created_at: str | None = None
 
     class Config:
